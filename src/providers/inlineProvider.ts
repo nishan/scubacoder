@@ -1,5 +1,6 @@
 
 import * as vscode from 'vscode';
+import { ExtensionName } from '../extension';
 import { LLMProvider } from '../models/types';
 import { PolicyEngine } from '../policy/engine';
 import { AuditLogger } from '../audit/logger';
@@ -40,7 +41,7 @@ export function registerInlineCompletion(provider: LLMProvider, policy: PolicyEn
         const item = new vscode.InlineCompletionItem(result.text, new vscode.Range(position, position));
         return { items: [item] };
       } catch (err: any) {
-        console.error('ScubaCoder inline error', err);
+        console.error(`${ExtensionName} inline error`, err);
         return;
       }
     }

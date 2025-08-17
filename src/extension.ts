@@ -1,3 +1,5 @@
+// Global extension name for UX
+export const ExtensionName = 'ScubaCoder';
 
 import * as vscode from 'vscode';
 import { registerInlineCompletionCommand } from './commands/registerInlineCompletion';
@@ -37,11 +39,11 @@ export async function activate(context: vscode.ExtensionContext) {
   // Re-load configuration on change
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
     if (e.affectsConfiguration('scubacoder')) {
-      vscode.window.showInformationMessage('ScubaCoder settings changed. Some changes may require reload.');
+      vscode.window.showInformationMessage(`${ExtensionName} settings changed. Some changes may require reload.`);
     }
   }));
 
-  vscode.window.setStatusBarMessage('ScubaCoder activated (scaffold)', 2000);
+  vscode.window.setStatusBarMessage(`${ExtensionName} activated`, 2000);
 }
 
 export function deactivate() {}

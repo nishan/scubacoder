@@ -1,5 +1,6 @@
 
 import * as vscode from 'vscode';
+import { ExtensionName } from '../extension';
 import { LLMProvider } from '../models/types';
 import { PolicyEngine } from '../policy/engine';
 import { AuditLogger } from '../audit/logger';
@@ -24,7 +25,7 @@ export class ChatPanel {
       ChatPanel.current.panel.reveal(column);
       return;
     }
-    const panel = vscode.window.createWebviewPanel('scubacoder.chat', 'ScubaCoder — Chat', column ?? vscode.ViewColumn.Two, {
+    const panel = vscode.window.createWebviewPanel('scubacoder.chat', `${ExtensionName} — Chat`, column ?? vscode.ViewColumn.Two, {
       enableScripts: true,
       retainContextWhenHidden: true
     });
@@ -113,7 +114,7 @@ export class ChatPanel {
             break;
         }
       } catch (e) {
-        vscode.window.showErrorMessage(`ScubaCoder chat error: ${String(e)}`);
+        vscode.window.showErrorMessage(`${ExtensionName} chat error: ${String(e)}`);
       }
     });
   }

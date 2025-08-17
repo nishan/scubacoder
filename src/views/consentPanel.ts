@@ -1,5 +1,6 @@
 
 import * as vscode from 'vscode';
+import { ExtensionName } from '../extension';
 
 export class ConsentPanel {
   public static current: ConsentPanel | undefined;
@@ -11,7 +12,7 @@ export class ConsentPanel {
       ConsentPanel.current.panel.reveal(column);
       return;
     }
-    const panel = vscode.window.createWebviewPanel('scubacoder.consent', 'ScubaCoder Consent', column ?? vscode.ViewColumn.Three, {
+    const panel = vscode.window.createWebviewPanel('scubacoder.consent', `${ExtensionName} Consent`, column ?? vscode.ViewColumn.Three, {
       enableScripts: true
     });
     ConsentPanel.current = new ConsentPanel(panel, extUri, policy);
@@ -27,7 +28,7 @@ export class ConsentPanel {
       if (msg.type === 'save') {
         const selected = msg.uris as string[];
         await vscode.workspace.getConfiguration('scubacoder').update('consent.selected', selected, vscode.ConfigurationTarget.Workspace);
-        vscode.window.showInformationMessage(`ScubaCoder: Saved ${selected.length} consented files for context.`);
+        vscode.window.showInformationMessage(`${ExtensionName}: Saved ${selected.length} consented files for context.`);
       }
     });
   }
