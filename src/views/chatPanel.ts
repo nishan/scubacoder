@@ -37,9 +37,11 @@ export class ChatPanel {
     this.policy = policy;
     this.audit = audit;
 
+
     const cfg = vscode.workspace.getConfiguration('scubacoder');
-    const model = cfg.get<string>('model', 'qwen2.5-coder:7b');
+    const model = cfg.get<string>('ollama.model', 'qwen2.5-coder:7b');
     const providerId = cfg.get<string>('provider', 'ollama');
+    const availableProviderModels = cfg.get<any[]>('availableProviderModels', []);
 
     // Build initial candidate context list from visible editors
     const editors = vscode.window.visibleTextEditors ?? [];
@@ -48,7 +50,12 @@ export class ChatPanel {
       .map(e => ({ label: vscode.workspace.asRelativePath(e.document.uri), uri: e.document.uri.toString() }));
 
     const nonce = String(Math.random());
-    this.panel.webview.html = this.getHtml(nonce, { providerId, model, candidates });
+    // Mark the current selection
+    const markedModels = availableProviderModels.map((item: any) => ({
+      ...item,
+      isSelected: item.provider === providerId && item.model === model
+    }));
+    this.panel.webview.html = this.getHtml(nonce, { providerId, model, candidates, availableProviderModels: markedModels });
 
     this.panel.onDidDispose(() => (ChatPanel.current = undefined));
 
@@ -111,11 +118,19 @@ export class ChatPanel {
     });
   }
 
-  private getHtml(nonce: string, init: { providerId: string; model: string; candidates: Array<{label: string; uri: string}> }): string {
+  private getHtml(
+    nonce: string,
+    init: {
+      providerId: string;
+      model: string;
+      candidates: Array<{ label: string; uri: string }>;
+      availableProviderModels?: Array<{ provider: string; baseUrl: string; model: string }>;
+    }
+  ): string {
     const templatePath = path.join(__dirname, 'chatPanel.html.mustache');
     const template = fs.readFileSync(templatePath, 'utf8');
-    const { providerId, model, candidates } = init;
-    const initJson = JSON.stringify({ providerId, model, candidates });
-    return mustache.render(template, { nonce, providerId, model, candidates, initJson });
+    const { providerId, model, candidates, availableProviderModels = [] } = init;
+    const initJson = JSON.stringify({ providerId, model, candidates, availableProviderModels });
+    return mustache.render(template, { nonce, providerId, model, candidates, availableProviderModels, initJson });
   }
 }

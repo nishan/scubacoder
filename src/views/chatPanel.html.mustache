@@ -54,7 +54,11 @@
     <div class="composer">
       <div class="composer-row">
         <select id="agent">
-          <option selected>Local • ${providerId}:${model}</option>
+          {{#availableProviderModels}}
+            <option value="{{provider}}|{{baseUrl}}|{{model}}" {{#isSelected}}selected{{/isSelected}}>
+              {{provider}} • {{model}} ({{baseUrl}})
+            </option>
+          {{/availableProviderModels}}
         </select>
         <span class="muted">No code leaves your machine.</span>
       </div>

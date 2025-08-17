@@ -112,6 +112,20 @@
           "type": "boolean",
           "default": true,
           "description": "Log requests locally for auditing."
+        },
+        "scubacoder.availableProviderModels": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object",
+            "properties": {
+              "provider": { "type": "string" },
+              "baseUrl": { "type": "string" },
+              "model": { "type": "string" }
+            },
+            "required": ["provider", "baseUrl", "model"]
+          },
+          "description": "List of available provider/model combinations for ScubaCoder chat panel."
         }
       }
     }
