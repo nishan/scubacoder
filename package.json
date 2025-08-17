@@ -107,20 +107,25 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "vscode:prepublish": "npm run build",
+    "compile": "npm run copy-assets && tsc -p ./",
+    "copy-assets": "copyfiles -u 2 src/views/*.mustache out/views/",
+    "build": "npm run copy-assets && npm run compile ",
     "watch": "tsc -watch -p ./",
     "lint": "echo \"Add ESLint if desired\"",
     "package": "vsce package"
   },
   "devDependencies": {
+    "@types/mustache": "^4.2.6",
     "@types/node": "^20.12.7",
     "@types/vscode": "1.88.0",
+    "copyfiles": "^2.4.1",
     "typescript": "^5.5.0",
     "vsce": "^1.97.0"
   },
   "dependencies": {
     "minimatch": "^9.0.4",
+    "mustache": "^4.2.0",
     "node-fetch": "^3.3.2"
   }
 }
