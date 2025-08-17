@@ -1,0 +1,126 @@
+{
+  "name": "scubacoder",
+  "displayName": "ScubaCoder",
+  "description": "A privacy-first, local-only coding assistant for VS Code powered by Ollama or vLLM.",
+  "version": "0.0.1",
+  "publisher": "your-publisher-id",
+  "engines": {
+    "vscode": "^1.88.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages",
+    "AI"
+  ],
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "scubacoder.chat.open",
+        "title": "ScubaCoder: Open Chat"
+      },
+      {
+        "command": "scubacoder.consent.open",
+        "title": "ScubaCoder: Open Consent Panel"
+      },
+      {
+        "command": "scubacoder.index.rebuild",
+        "title": "ScubaCoder: Rebuild Local Index"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "scubacoder.chat.open",
+        "key": "ctrl+alt+s",
+        "mac": "cmd+alt+s",
+        "when": "editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "ScubaCoder",
+      "properties": {
+        "scubacoder.provider": {
+          "type": "string",
+          "enum": [
+            "ollama",
+            "vllm"
+          ],
+          "default": "ollama",
+          "description": "Select the local model provider."
+        },
+        "scubacoder.model": {
+          "type": "string",
+          "default": "qwen2.5-coder:7b",
+          "description": "Model identifier for the selected provider."
+        },
+        "scubacoder.ollama.baseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:11434",
+          "description": "Base URL for the local Ollama server."
+        },
+        "scubacoder.vllm.baseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8000",
+          "description": "Base URL for the local vLLM server (OpenAI-compatible)."
+        },
+        "scubacoder.inline.maxTokens": {
+          "type": "number",
+          "default": 128,
+          "minimum": 16,
+          "maximum": 1024,
+          "description": "Max tokens for inline completions."
+        },
+        "scubacoder.inline.temperature": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Sampling temperature for inline completions."
+        },
+        "scubacoder.policy.deny": {
+          "type": "array",
+          "default": [
+            "**/.env",
+            "**/*.pem",
+            "secrets/**"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Glob patterns to exclude from context selection."
+        },
+        "scubacoder.network.localOnly": {
+          "type": "boolean",
+          "default": true,
+          "description": "If enabled, only allow localhost connections from the extension."
+        },
+        "scubacoder.audit.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Log requests locally for auditing."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "echo \"Add ESLint if desired\"",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "@types/vscode": "1.88.0",
+    "typescript": "^5.5.0",
+    "vsce": "^1.97.0"
+  },
+  "dependencies": {
+    "minimatch": "^9.0.4",
+    "node-fetch": "^3.3.2"
+  }
+}

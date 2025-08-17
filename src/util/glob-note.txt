@@ -1,0 +1,1 @@
+This scaffold uses 'minimatch' via ES module; add it if you plan to expand PolicyEngine.
