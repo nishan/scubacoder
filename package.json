@@ -29,6 +29,14 @@
       {
         "command": "scubacoder.index.rebuild",
         "title": "ScubaCoder: Rebuild Local Index"
+      },
+      {
+        "command": "scubacoder.config.ollama",
+        "title": "ScubaCoder: Configure Ollama Endpoint/Model"
+      },
+      {
+        "command": "scubacoder.config.vllm",
+        "title": "ScubaCoder: Configure vLLM Endpoint/Model"
       }
     ],
     "keybindings": [
@@ -43,19 +51,21 @@
       "type": "object",
       "title": "ScubaCoder",
       "properties": {
+        "scubacoder.ollama.model": {
+          "type": "string",
+          "default": "gpt-oss:20b",
+          "description": "Model ID to use with Ollama."
+        },
+        "scubacoder.vllm.model": {
+          "type": "string",
+          "default": "gpt-oss:20b",
+          "description": "Model ID to use with vLLM."
+        },
         "scubacoder.provider": {
           "type": "string",
-          "enum": [
-            "ollama",
-            "vllm"
-          ],
+          "enum": ["ollama", "vllm"],
           "default": "ollama",
-          "description": "Select the local model provider."
-        },
-        "scubacoder.model": {
-          "type": "string",
-          "default": "qwen2.5-coder:7b",
-          "description": "Model identifier for the selected provider."
+          "description": "Select the LLM provider."
         },
         "scubacoder.ollama.baseUrl": {
           "type": "string",
