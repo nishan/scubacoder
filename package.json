@@ -132,12 +132,16 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
+    "build:vue": "cd chat-panel-vue && npm run build:prod",
+    "copy-vue": "copyfiles -u 2 chat-panel-vue/dist/* src/views/chat-panel-vue/",
+    "build:full": "npm run build:vue && npm run copy-vue && npm run build",
     "compile": "npm run copy-assets && tsc -p ./",
-    "copy-assets": "copyfiles -u 2 src/views/*.mustache out/views/",
-    "build": "npm run copy-assets && npm run compile ",
-    "watch": "tsc -watch -p ./",
+    "copy-assets": "copyfiles -u 2 src/views/chat-panel-vue/* out/views/chat-panel-vue/",
+    "build": "npm run copy-assets && npm run compile",
+    "watch": "npm run build:vue && npm run copy-vue && tsc -watch -p ./",
     "lint": "echo \"Add ESLint if desired\"",
-    "package": "vsce package"
+    "package": "vsce package",
+    "dev": "npm run build:vue && npm run copy-vue && npm run watch"
   },
   "devDependencies": {
     "@types/mustache": "^4.2.6",

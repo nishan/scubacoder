@@ -1,0 +1,24 @@
+{
+  "name": "scubacoder-chat-panel",
+  "version": "1.0.0",
+  "description": "Vue.js chat panel for ScubaCoder VS Code extension",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:prod": "vite build --mode production"
+  },
+  "dependencies": {
+    "vue": "^3.3.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^4.2.3",
+    "vite": "^4.4.5",
+    "typescript": "^5.0.2",
+    "@types/node": "^20.4.5"
+  },
+  "keywords": ["vue", "vscode", "extension", "chat"],
+  "author": "ScubaCoder",
+  "license": "MIT"
+}
