@@ -4,9 +4,6 @@ import { ExtensionName } from '../extension';
 import { LLMProvider } from '../models/types';
 import { PolicyEngine } from '../policy/engine';
 import { AuditLogger } from '../audit/logger';
-import * as fs from 'fs';
-import * as path from 'path';
-import mustache from 'mustache';
 import { info, warn } from '../modules/log';
 
 /**
@@ -16,6 +13,7 @@ import { info, warn } from '../modules/log';
 export class ChatPanel {
   public static current: ChatPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
+  private readonly extUri: vscode.Uri;
   private readonly provider: LLMProvider;
   private readonly policy: PolicyEngine;
   private readonly audit: AuditLogger;
@@ -36,6 +34,7 @@ export class ChatPanel {
 
   private constructor(panel: vscode.WebviewPanel, _extUri: vscode.Uri, provider: LLMProvider, policy: PolicyEngine, audit: AuditLogger) {
     this.panel = panel;
+    this.extUri = _extUri;
     this.provider = provider;
     this.policy = policy;
     this.audit = audit;
@@ -45,6 +44,14 @@ export class ChatPanel {
     const model = cfg.get<string>('ollama.model', 'qwen2.5-coder:7b');
     const providerId = cfg.get<string>('provider', 'ollama');
     const availableProviderModels = cfg.get<any[]>('availableProviderModels', []);
+
+    this.panel.webview.options = {
+      enableScripts: true,
+      enableCommandUris: false,
+      localResourceRoots: [
+        vscode.Uri.joinPath(this.extUri, 'chat-panel-vue', 'dist')
+      ]
+    };
 
     // Build initial candidate context list from visible editors
     const editors = vscode.window.visibleTextEditors ?? [];
@@ -77,10 +84,6 @@ export class ChatPanel {
             const maxTokens = 512;
             const temperature = 0.3;
             const contextUris: string[] = Array.isArray(msg.contextUris) ? msg.contextUris : [];
-
-            info('Sending userMessage to webview');
-            // Show user message immediately in the chat panel
-            this.panel.webview.postMessage({ type: 'userMessage', text });
 
             info('Sending loading to webview');
             // Show loading indicator
@@ -169,9 +172,12 @@ export class ChatPanel {
               info(message, data);
             } else if (level === 'warn') {
               warn(message, data);
+            } else if (level === 'error') {
+              warn(message, data);
             }
             break;
           }
+
           default:
             break;
         }
@@ -179,6 +185,13 @@ export class ChatPanel {
         vscode.window.showErrorMessage(`${ExtensionName} chat error: ${String(e)}`);
       }
     });
+
+
+  }
+
+  private getJavaScriptCode(): string {
+    // This is now handled by the Vue.js app
+    return '';
   }
 
   private getHtml(
@@ -190,10 +203,56 @@ export class ChatPanel {
       availableProviderModels?: Array<{ provider: string; baseUrl: string; model: string }>;
     }
   ): string {
-    const templatePath = path.join(__dirname, 'chatPanel.html.mustache');
-    const template = fs.readFileSync(templatePath, 'utf8');
     const { providerId, model, candidates, availableProviderModels = [] } = init;
-    const initJson = JSON.stringify({ providerId, model, candidates, availableProviderModels });
-    return mustache.render(template, { nonce, providerId, model, candidates, availableProviderModels, initJson });
+    
+    // Get URIs for static assets
+    const cssUri = this.panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extUri, 'chat-panel-vue', 'dist', 'style.css')
+    );
+    const jsUri = this.panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extUri, 'chat-panel-vue', 'dist', 'index.umd.js')
+    );
+    
+    // Create initialization data for Vue app
+    const initData = {
+      providerId,
+      model,
+      candidates: candidates.map(c => ({ ...c, isSelected: false })),
+      availableProviderModels: availableProviderModels.map((item: any) => ({
+        ...item,
+        isSelected: item.provider === providerId && item.model === model
+      }))
+    };
+    
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <title>ScubaCoder — Chat</title>
+        <link rel="stylesheet" href="${cssUri}" />
+      </head>
+      <body>
+        <div id="app">
+          <!-- Vue app will mount here -->
+        </div>
+        
+        <script nonce="${nonce}" src="${jsUri}"></script>
+        <script nonce="${nonce}">
+          // Initialize the Vue app with extension data
+          if (typeof ScubaCoderChatPanel !== 'undefined') {
+            // The Vue app should automatically mount and initialize
+            // Pass initial data through window for the Vue app to access
+            window.vscodeInitData = ${JSON.stringify(initData)};
+          } else {
+            console.error('Vue app failed to load');
+            document.getElementById('app').innerHTML = '<div style="padding: 20px; text-align: center;">Failed to load chat interface</div>';
+          }
+        </script>
+      </body>
+      </html>
+    `;
   }
 }
