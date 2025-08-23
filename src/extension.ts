@@ -13,10 +13,16 @@ import { NetworkGuard } from './net/guard';
 import { PolicyEngine } from './policy/engine';
 import { AuditLogger } from './audit/logger';
 import { Indexer } from './rag/indexer';
+import { info, registerLogger } from './modules/log';
 
 import { OllamaProvider } from './models/ollama';
 
 export async function activate(context: vscode.ExtensionContext) {
+
+  	// Create logger
+	registerLogger(vscode.window.createOutputChannel('Scuba Coder', { log: true }));
+	info('Scuba Coder is activated.');
+
   const cfg = vscode.workspace.getConfiguration('scubacoder');
 
   // Network guard: optionally enforce localhost-only
@@ -36,6 +42,7 @@ export async function activate(context: vscode.ExtensionContext) {
   registerOllamaConfig(context, cfg);
   registerVllmConfig(context, cfg);
 
+  info ("Commands registered");
   // Re-load configuration on change
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
     if (e.affectsConfiguration('scubacoder')) {

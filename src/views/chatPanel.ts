@@ -7,6 +7,7 @@ import { AuditLogger } from '../audit/logger';
 import * as fs from 'fs';
 import * as path from 'path';
 import mustache from 'mustache';
+import { info, warn } from '../modules/log';
 
 /**
  * ChatPanel: A richer chat UX with message cards, code blocks, copy/feedback buttons,
@@ -18,6 +19,7 @@ export class ChatPanel {
   private readonly provider: LLMProvider;
   private readonly policy: PolicyEngine;
   private readonly audit: AuditLogger;
+  private readonly candidates: Array<{ label: string; uri: string }> = [];
 
   public static createOrShow(extUri: vscode.Uri, provider: LLMProvider, policy: PolicyEngine, audit: AuditLogger) {
     const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined;
@@ -38,7 +40,7 @@ export class ChatPanel {
     this.policy = policy;
     this.audit = audit;
 
-
+    // Initialize configuration
     const cfg = vscode.workspace.getConfiguration('scubacoder');
     const model = cfg.get<string>('ollama.model', 'qwen2.5-coder:7b');
     const providerId = cfg.get<string>('provider', 'ollama');
@@ -46,7 +48,7 @@ export class ChatPanel {
 
     // Build initial candidate context list from visible editors
     const editors = vscode.window.visibleTextEditors ?? [];
-    const candidates = editors
+    this.candidates = editors
       .filter(e => e.document.uri.scheme === 'file' && !this.policy.isDenied(e.document.uri))
       .map(e => ({ label: vscode.workspace.asRelativePath(e.document.uri), uri: e.document.uri.toString() }));
 
@@ -56,29 +58,52 @@ export class ChatPanel {
       ...item,
       isSelected: item.provider === providerId && item.model === model
     }));
-    this.panel.webview.html = this.getHtml(nonce, { providerId, model, candidates, availableProviderModels: markedModels });
+    this.panel.webview.html = this.getHtml(nonce, { 
+      providerId, 
+      model, 
+      candidates: this.candidates, 
+      availableProviderModels: markedModels 
+    });
 
     this.panel.onDidDispose(() => (ChatPanel.current = undefined));
 
     this.panel.webview.onDidReceiveMessage(async (msg) => {
       try {
+        info('TypeScript received message:', msg);
         switch (msg.type) {
           case 'chat': {
+            info('Processing chat case');
             const text: string = msg.text ?? '';
             const maxTokens = 512;
             const temperature = 0.3;
             const contextUris: string[] = Array.isArray(msg.contextUris) ? msg.contextUris : [];
 
-            const system = 'You are a careful coding assistant. Prefer short, accurate answers. Return code in triple backticks.';
-            const res = await this.provider.chat({
-              messages: [{ role: 'system', content: system }, { role: 'user', content: text }],
-              maxTokens,
-              temperature
-            });
+            info('Sending userMessage to webview');
+            // Show user message immediately in the chat panel
+            this.panel.webview.postMessage({ type: 'userMessage', text });
 
-            this.audit.record({ kind: 'chat', model: this.provider.id, promptPreview: text.slice(0, 200), files: contextUris, timestamp: new Date().toISOString() });
+            info('Sending loading to webview');
+            // Show loading indicator
+            this.panel.webview.postMessage({ type: 'loading' });
 
-            this.panel.webview.postMessage({ type: 'reply', text: res.text });
+            try {
+              info('Calling provider.chat');
+              const system = 'You are a careful coding assistant. Prefer short, accurate answers. Return code in triple backticks.';
+              const res = await this.provider.chat({
+                messages: [{ role: 'system', content: system }, { role: 'user', content: text }],
+                maxTokens,
+                temperature
+              });
+
+              info('Got response from provider:', res);
+              this.audit.record({ kind: 'chat', model: this.provider.id, promptPreview: text.slice(0, 200), files: contextUris, timestamp: new Date().toISOString() });
+
+              info('Sending reply to webview');
+              this.panel.webview.postMessage({ type: 'reply', text: res.text });
+            } catch (error) {
+              warn('Error in provider.chat:', error);
+              this.panel.webview.postMessage({ type: 'reply', text: `Error: ${String(error)}` });
+            }
             break;
           }
           case 'insert': {
@@ -108,6 +133,43 @@ export class ChatPanel {
               } catch {}
             }
             this.panel.webview.postMessage({ type: 'searchResults', results });
+            break;
+          }
+          case 'changeProviderModel': {
+            const provider = msg.provider as string;
+            const model = msg.model as string;
+            
+            // Update configuration
+            const config = vscode.workspace.getConfiguration('scubacoder');
+            await config.update('provider', provider, vscode.ConfigurationTarget.Global);
+            await config.update('ollama.model', model, vscode.ConfigurationTarget.Global);
+            
+            // Update the webview with new state
+            const availableProviderModels = config.get<any[]>('availableProviderModels', []);
+            const markedModels = availableProviderModels.map(item => ({
+              ...item,
+              isSelected: item.provider === provider && item.model === model
+            }));
+            
+            // Send state update to webview
+            this.panel.webview.postMessage({ 
+              type: 'updateProviderModel',
+              provider,
+              model,
+            });
+            
+            break;
+          }
+          case 'log': {
+            const level = msg.level as string;
+            const message = msg.message as string;
+            const data = msg.data;
+            
+            if (level === 'info') {
+              info(message, data);
+            } else if (level === 'warn') {
+              warn(message, data);
+            }
             break;
           }
           default:

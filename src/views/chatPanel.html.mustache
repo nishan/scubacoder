@@ -102,6 +102,36 @@
     .meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
     .result-header { font-weight: 600; margin-bottom: 6px; }
     .search-result { font-size: 12px; color: var(--muted); }
+
+    .flyout {
+      position: relative;
+      display: inline-block;
+    }
+    .flyout-content {
+      display: none;
+      position: absolute;
+      background: var(--input-bg);
+      color: var(--input-fg);
+      border: 1px solid var(--input-border);
+      border-radius: 6px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+      padding: 8px;
+      z-index: 1000;
+      min-width: 200px;
+    }
+    .flyout:hover .flyout-content {
+      display: block;
+    }
+    .flyout-item {
+      padding: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .flyout-item:hover,
+    .flyout-item.active {
+      background: var(--selected-bg);
+      color: var(--selected-fg);
+    }
   </style>
 </head>
 <body>
@@ -117,13 +147,16 @@
     <div id="pillbar" class="pillbar"></div>
     <div class="composer">
       <div class="composer-row">
-        <select id="agent">
-          {{#availableProviderModels}}
-            <option value="{{provider}}|{{model}}" {{#isSelected}}selected{{/isSelected}}>
-              {{provider}} • {{model}}
-            </option>
-          {{/availableProviderModels}}
-        </select>
+        <div class="flyout">
+          <button class="btn" id="agentButton">{{providerId}} • {{model}}</button>
+          <div class="flyout-content">
+            {{#availableProviderModels}}
+              <div class="flyout-item{{#isSelected}} active{{/isSelected}}" data-value="{{provider}}|{{model}}">
+                {{provider}} • {{model}}
+              </div>
+            {{/availableProviderModels}}
+          </div>
+        </div>
         <span class="muted">No code leaves your machine.</span>
       </div>
       <textarea id="input" placeholder="Ask ScubaCoder… (Shift+Enter = newline)"></textarea>
@@ -144,6 +177,16 @@
   const sendBtn = document.getElementById('send');
   const pillbar = document.getElementById('pillbar');
   const addCtxBtn = document.getElementById('addCtx');
+
+  // Debug: Check if elements exist
+  vscode.postMessage({ type: 'log', level: 'info', message: 'Elements found:', data: {
+    messagesEl: !!messagesEl,
+    inputEl: !!inputEl,
+    sendBtn: !!sendBtn,
+    pillbar: !!pillbar,
+    addCtxBtn: !!addCtxBtn,
+    vscode: !!vscode
+  }});
 
   const selected = new Set();
 
@@ -231,12 +274,26 @@
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  function appendLoading() {
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = '<div class="role">Assistant</div><div class="text">Thinking...</div>';
+    card.id = 'loading-message';
+    messagesEl.appendChild(card);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
   sendBtn.onclick = () => {
+    vscode.postMessage({ type: 'log', level: 'info', message: 'Send button clicked!' });
     const text = inputEl.value.trim();
-    if (!text) return;
-    appendUser(text);
+    vscode.postMessage({ type: 'log', level: 'info', message: 'Input text:', data: text });
+    if (!text) {
+      vscode.postMessage({ type: 'log', level: 'info', message: 'No text entered, returning' });
+      return;
+    }
+    vscode.postMessage({ type: 'log', level: 'info', message: 'Sending message to vscode:', data: { type: 'chat', text, contextUris: Array.from(selected) } });
     vscode.postMessage({ type: 'chat', text, contextUris: Array.from(selected) });
     inputEl.value = '';
+    vscode.postMessage({ type: 'log', level: 'info', message: 'Input cleared' });
   };
   inputEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -247,8 +304,55 @@
 
   window.addEventListener('message', (event) => {
     const msg = event.data;
-    if (msg.type === 'reply') appendAssistant(msg.text || '');
+    vscode.postMessage({ type: 'log', level: 'info', message: 'HTML received message from TypeScript:', data: msg });
+    if (msg.type === 'userMessage') {
+      vscode.postMessage({ type: 'log', level: 'info', message: 'Showing user message:', data: msg.text });
+      appendUser(msg.text || '');
+    }
+    if (msg.type === 'loading') {
+      vscode.postMessage({ type: 'log', level: 'info', message: 'Showing loading message' });
+      appendLoading();
+    }
+    if (msg.type === 'reply') {
+      // Remove loading message when reply arrives
+      const loadingEl = document.getElementById('loading-message');
+      if (loadingEl) loadingEl.remove();
+      appendAssistant(msg.text || '');
+    }
     if (msg.type === 'searchResults') appendSearchResults(msg.results || []);
+    if (msg.type === 'updateProviderModel') {
+      const agentButton = document.getElementById('agentButton');
+      if (agentButton) {
+        agentButton.textContent = `${msg.provider} • ${msg.model}`;
+      }
+      // Update active state in flyout
+      document.querySelectorAll('.flyout-item').forEach(item => {
+        const value = item.getAttribute('data-value');
+        const [itemProvider, itemModel] = value.split('|');
+        if (itemProvider === msg.provider && itemModel === msg.model) {
+          item.classList.add('active');
+        } else {
+          item.classList.remove('active');
+        }
+      });
+    }
+  });
+
+  // Flyout agent selection
+  document.querySelectorAll('.flyout-item').forEach(item => {
+    item.onclick = () => {
+      const value = item.getAttribute('data-value');
+      const [provider, model] = value.split('|');
+      // Update button text
+      const agentButton = document.getElementById('agentButton');
+      if (agentButton) {
+        agentButton.textContent = `${provider} • ${model}`;
+      }
+      // Remove active class from all items and add to selected
+      document.querySelectorAll('.flyout-item').forEach(i => i.classList.remove('active'));
+      item.classList.add('active');
+      vscode.postMessage({ type: 'changeProviderModel', provider, model });
+    };
   });
 </script>
 </body>

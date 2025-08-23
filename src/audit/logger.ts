@@ -2,6 +2,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import { warn } from '../modules/log';
 
 export class AuditLogger {
   private logPath: string | undefined;
@@ -18,7 +19,7 @@ export class AuditLogger {
     try {
       fs.appendFileSync(this.logPath, JSON.stringify(entry) + '\n');
     } catch (e) {
-      console.error('Audit log write failed', e);
+      warn('Audit log write failed', e);
     }
   }
 }

@@ -6,6 +6,7 @@ import { PolicyEngine } from '../policy/engine';
 import { AuditLogger } from '../audit/logger';
 import { buildInlinePrompt } from '../util/prompt';
 import { selectContext } from '../context/selector';
+import { warn } from '../modules/log';
 
 export function registerInlineCompletion(provider: LLMProvider, policy: PolicyEngine, audit: AuditLogger) {
   const selector: vscode.DocumentSelector = [{ pattern: '**' }];
@@ -41,7 +42,7 @@ export function registerInlineCompletion(provider: LLMProvider, policy: PolicyEn
         const item = new vscode.InlineCompletionItem(result.text, new vscode.Range(position, position));
         return { items: [item] };
       } catch (err: any) {
-        console.error(`${ExtensionName} inline error`, err);
+        warn(`${ExtensionName} inline error`, err);
         return;
       }
     }
