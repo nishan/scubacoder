@@ -13,7 +13,11 @@ export class ConsentPanel {
       return;
     }
     const panel = vscode.window.createWebviewPanel('scubacoder.consent', `${ExtensionName} Consent`, column ?? vscode.ViewColumn.Three, {
-      enableScripts: true
+      enableScripts: true,
+      localResourceRoots: [extUri],
+      enableCommandUris: false,
+      enableFindWidget: false,
+      enableForms: false
     });
     ConsentPanel.current = new ConsentPanel(panel, extUri, policy);
   }

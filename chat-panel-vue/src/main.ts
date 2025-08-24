@@ -1,7 +1,7 @@
 import { createApp } from 'vue';
 import App from './App.vue';
 
-// Create and mount the Vue application
+// Create the Vue application
 const app = createApp(App);
 
 // Global error handler for development
@@ -13,13 +13,7 @@ if (process.env.NODE_ENV === 'development') {
   };
 }
 
-// Mount the app
-app.mount('#app');
-
-// Export for potential external use
-export default app;
-
-// Make the app available globally for VS Code integration
+// Make the app available globally for VS Code integration BEFORE mounting
 declare global {
   interface Window {
     ScubaCoderChatPanel: {
@@ -34,3 +28,9 @@ window.ScubaCoderChatPanel = {
     return app;
   }
 };
+
+// Now mount the app
+app.mount('#app');
+
+// Export for potential external use
+export default app;

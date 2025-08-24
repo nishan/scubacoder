@@ -9,7 +9,7 @@ import { selectContext } from '../context/selector';
 import { warn } from '../modules/log';
 
 export function registerInlineCompletion(provider: LLMProvider, policy: PolicyEngine, audit: AuditLogger) {
-  const selector: vscode.DocumentSelector = [{ pattern: '**' }];
+  const selector: vscode.DocumentSelector = [{ scheme: 'file', pattern: '**' }];
 
   const inlineProvider: vscode.InlineCompletionItemProvider = {
     async provideInlineCompletionItems(document, position, context, token) {

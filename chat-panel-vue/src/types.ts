@@ -65,5 +65,11 @@ export interface VSCodeAPI {
 declare global {
   interface Window {
     vscode: VSCodeAPI;
+    vscodeInitData?: {
+      providerId: string;
+      model: string;
+      candidates: Array<{ label: string; uri: string; isSelected: boolean }>;
+      availableProviderModels: Array<{ provider: string; baseUrl: string; model: string; isSelected: boolean }>;
+    };
   }
 }

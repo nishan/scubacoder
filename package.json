@@ -136,7 +136,7 @@
     "copy-vue": "copyfiles -u 2 chat-panel-vue/dist/* src/views/chat-panel-vue/",
     "build:full": "npm run build:vue && npm run copy-vue && npm run build",
     "compile": "npm run copy-assets && tsc -p ./",
-    "copy-assets": "copyfiles -u 2 src/views/chat-panel-vue/* out/views/chat-panel-vue/",
+    "copy-assets": "copyfiles -u 2 chat-panel-vue/dist/* out/views/chat-panel-vue/",
     "build": "npm run copy-assets && npm run compile",
     "watch": "npm run build:vue && npm run copy-vue && tsc -watch -p ./",
     "lint": "echo \"Add ESLint if desired\"",

@@ -27,7 +27,13 @@ export class ChatPanel {
     }
     const panel = vscode.window.createWebviewPanel('scubacoder.chat', `${ExtensionName} — Chat`, column ?? vscode.ViewColumn.Two, {
       enableScripts: true,
-      retainContextWhenHidden: true
+      retainContextWhenHidden: true,
+      localResourceRoots: [
+        vscode.Uri.joinPath(extUri, 'out', 'views', 'chat-panel-vue')
+      ],
+      enableCommandUris: false,
+      enableFindWidget: true,
+      enableForms: false
     });
     ChatPanel.current = new ChatPanel(panel, extUri, provider, policy, audit);
   }
@@ -45,13 +51,7 @@ export class ChatPanel {
     const providerId = cfg.get<string>('provider', 'ollama');
     const availableProviderModels = cfg.get<any[]>('availableProviderModels', []);
 
-    this.panel.webview.options = {
-      enableScripts: true,
-      enableCommandUris: false,
-      localResourceRoots: [
-        vscode.Uri.joinPath(this.extUri, 'chat-panel-vue', 'dist')
-      ]
-    };
+    info ("VSCode URI:", this.extUri);
 
     // Build initial candidate context list from visible editors
     const editors = vscode.window.visibleTextEditors ?? [];
@@ -59,7 +59,7 @@ export class ChatPanel {
       .filter(e => e.document.uri.scheme === 'file' && !this.policy.isDenied(e.document.uri))
       .map(e => ({ label: vscode.workspace.asRelativePath(e.document.uri), uri: e.document.uri.toString() }));
 
-    const nonce = String(Math.random());
+    const nonce = this.getNonce();
     // Mark the current selection
     const markedModels = availableProviderModels.map((item: any) => ({
       ...item,
@@ -71,6 +71,8 @@ export class ChatPanel {
       candidates: this.candidates, 
       availableProviderModels: markedModels 
     });
+
+    info('Chat panel initialized with html:', this.panel.webview.html);
 
     this.panel.onDidDispose(() => (ChatPanel.current = undefined));
 
@@ -194,6 +196,15 @@ export class ChatPanel {
     return '';
   }
 
+  private getNonce() {
+    let text = '';
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < 32; i++) {
+      text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
+  }
+
   private getHtml(
     nonce: string,
     init: {
@@ -207,10 +218,10 @@ export class ChatPanel {
     
     // Get URIs for static assets
     const cssUri = this.panel.webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extUri, 'chat-panel-vue', 'dist', 'style.css')
+      vscode.Uri.joinPath(this.extUri, 'out', 'views', 'chat-panel-vue', 'style.css')
     );
     const jsUri = this.panel.webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extUri, 'chat-panel-vue', 'dist', 'index.umd.js')
+      vscode.Uri.joinPath(this.extUri, 'out', 'views', 'chat-panel-vue', 'index.umd.js')
     );
     
     // Create initialization data for Vue app
@@ -229,27 +240,49 @@ export class ChatPanel {
       <html lang="en">
       <head>
         <meta charset="UTF-8" />
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+        <meta http-equiv="Content-Security-Policy" 
+          content="default-src * vscode-resource: https: 'unsafe-inline' 'unsafe-eval';
+          script-src vscode-resource: blob: data: https: 'unsafe-inline' 'unsafe-eval';
+          style-src vscode-resource: https: 'unsafe-inline';
+          img-src vscode-resource: data: https:;
+          connect-src vscode-resource: blob: data: https: http:;">
         <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
         <title>ScubaCoder — Chat</title>
-        <link rel="stylesheet" href="${cssUri}" />
+        <link rel="stylesheet" href="${cssUri}" rel="preload" as="style" />
+        <link href="${jsUri}" rel="preload" as="script" />
       </head>
       <body>
         <div id="app">
           <!-- Vue app will mount here -->
+          <div style="padding: 20px; text-align: center; color: #666;">
+            Loading chat interface...<br>
+            <small>Initialization data: ${JSON.stringify(initData).substring(0, 200)}...</small>
+          </div>
         </div>
-        
-        <script nonce="${nonce}" src="${jsUri}"></script>
-        <script nonce="${nonce}">
-          // Initialize the Vue app with extension data
-          if (typeof ScubaCoderChatPanel !== 'undefined') {
-            // The Vue app should automatically mount and initialize
-            // Pass initial data through window for the Vue app to access
-            window.vscodeInitData = ${JSON.stringify(initData)};
+        <script>
+          const vscode = acquireVsCodeApi();
+          ['log','warn','error'].forEach(level => {
+            const original = console[level].bind(console);
+            console[level] = (...args) => {
+              vscode.postMessage({ type: 'log', level, args });
+              original(...args);
+            };
+          });
+          </script>
+                          
+        <script src="${jsUri}"></script>                
+          <script>
+          console.log("Chat panel initialization started");
+          
+          if (typeof ScubaCoderChatPanel !== 'undefined') {            
+            console.log("Vue app found, initializing...");
+            
+            console.log("Vue app initialized with data");
           } else {
-            console.error('Vue app failed to load');
-            document.getElementById('app').innerHTML = '<div style="padding: 20px; text-align: center;">Failed to load chat interface</div>';
-          }
+            console.log("Vue app failed to load");
+            document.getElementById('app').innerHTML = '<div style="padding: 20px; text-align: center; color: #f44336;">Failed to load chat interface - Vue app not found</div>';
+          }        
+
         </script>
       </body>
       </html>

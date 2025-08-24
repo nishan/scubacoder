@@ -88,7 +88,7 @@ const contextSelectionCount = computed(() => selectedContextUris.value.length);
 
 // Methods
 const sendMessage = (text: string) => {
-  sendChatMessage();
+  sendChatMessage(text);
 };
 
 const addContext = () => {
@@ -117,8 +117,31 @@ watch(messages, () => {
 onMounted(() => {
   initializeChat();
   
-  // Initialize context files from props if available
-  if (window.vscode) {
+  // Initialize context files from extension data if available
+  if (window.vscodeInitData) {
+    try {
+      const initData = window.vscodeInitData;
+      if (initData.candidates) {
+        availableContextFiles.value = initData.candidates.map((candidate: any) => ({
+          label: candidate.label,
+          uri: candidate.uri,
+          isSelected: false
+        }));
+      }
+      if (initData.availableProviderModels) {
+        availableProviderModels.value = initData.availableProviderModels;
+      }
+      if (initData.providerId) {
+        currentProvider.value = initData.providerId;
+      }
+      if (initData.model) {
+        currentModel.value = initData.model;
+      }
+    } catch (error) {
+      console.warn('Failed to initialize from VSCode init data:', error);
+    }
+  } else if (window.vscode) {
+    // Fallback to VSCode state if available
     try {
       const state = window.vscode.getState();
       if (state && state.candidates) {
