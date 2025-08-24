@@ -1,75 +1,114 @@
-// Communication protocol types between VS Code extension and Vue app
-
+// Message types for the chat system
 export interface Message {
   id: string;
-  role: 'user' | 'assistant';
-  content: string;
+  role: 'user' | 'assistant' | 'error';
+  text: string;
   timestamp: Date;
-  contextUris?: string[];
+  fileReference?: string;
+  contextFiles?: ContextFile[];
+  reason?: string;
+  canRetry?: boolean;
 }
 
+// Context file information
 export interface ContextFile {
-  label: string;
-  uri: string;
-  isSelected: boolean;
+  path: string;
+  type: string;
+  name: string;
+  isSelected?: boolean;
 }
 
-export interface ProviderModel {
+// Agent/Model information
+export interface Agent {
+  id: string;
+  name: string;
+  version: string;
   provider: string;
-  baseUrl: string;
-  model: string;
-  isSelected: boolean;
+  isSelected?: boolean;
 }
 
-export interface ChatState {
-  messages: Message[];
-  selectedContextUris: string[];
-  availableContextFiles: ContextFile[];
-  availableProviderModels: ProviderModel[];
-  currentProvider: string;
-  currentModel: string;
-  isLoading: boolean;
-}
-
-// Outgoing messages from Vue to VS Code
+// VS Code message types
 export interface OutgoingMessage {
-  type: 'chat' | 'insert' | 'searchWorkspace' | 'changeProviderModel' | 'log';
-  text?: string;
-  code?: string;
-  query?: string;
-  provider?: string;
-  model?: string;
-  contextUris?: string[];
-  level?: 'info' | 'warn' | 'error';
-  message?: string;
-  data?: any;
+  type: string;
+  [key: string]: any;
 }
 
-// Incoming messages from VS Code to Vue
 export interface IncomingMessage {
-  type: 'userMessage' | 'loading' | 'reply' | 'updateProviderModel' | 'searchResults';
-  text?: string;
-  provider?: string;
-  model?: string;
-  results?: any[];
+  type: string;
+  [key: string]: any;
 }
 
-// VS Code API interface
-export interface VSCodeAPI {
-  postMessage(message: OutgoingMessage): void;
-  getState(): any;
-  setState(state: any): void;
+// Chat-specific message types
+export interface ChatMessage extends OutgoingMessage {
+  type: 'chat';
+  text: string;
+  contextUris?: string[];
 }
 
-// Global VS Code API declaration
-declare global {
-  interface Window {
-    vscode: VSCodeAPI;
-    vscodeInitData?: {
-      providerId: string;
-      model: string;
-      candidates: Array<{ label: string; uri: string; isSelected: boolean }>;
-      availableProviderModels: Array<{ provider: string; baseUrl: string; model: string; isSelected: boolean }>;
-    };
-  }
+export interface InsertCodeMessage extends OutgoingMessage {
+  type: 'insert-code';
+  code: string;
+}
+
+export interface ChangeProviderModelMessage extends OutgoingMessage {
+  type: 'changeProviderModel';
+  provider: string;
+  model: string;
+}
+
+export interface RetryMessage extends OutgoingMessage {
+  type: 'retry';
+  messageId: string;
+}
+
+export interface RegenerateMessage extends OutgoingMessage {
+  type: 'regenerate';
+  messageId: string;
+}
+
+export interface FeedbackMessage extends OutgoingMessage {
+  type: 'feedback';
+  messageId: string;
+  feedback: 'positive' | 'negative';
+}
+
+// VS Code response message types
+export interface ReplyMessage extends IncomingMessage {
+  type: 'reply';
+  text: string;
+}
+
+export interface ErrorMessage extends IncomingMessage {
+  type: 'error';
+  text: string;
+  reason?: string;
+  canRetry?: boolean;
+}
+
+export interface LoadingMessage extends IncomingMessage {
+  type: 'loading';
+}
+
+export interface UpdateProviderModelMessage extends IncomingMessage {
+  type: 'updateProviderModel';
+  provider: string;
+  model: string;
+}
+
+export interface ContextFilesMessage extends IncomingMessage {
+  type: 'contextFiles';
+  files: ContextFile[];
+}
+
+export interface CurrentFileMessage extends IncomingMessage {
+  type: 'currentFile';
+  file: string;
+}
+
+// VS Code initialization data
+export interface VSCodeInitData {
+  providerId: string;
+  model: string;
+  candidates: Array<{ label: string; uri: string; isSelected: boolean }>;
+  availableProviderModels: Array<{ provider: string; baseUrl: string; model: string; isSelected: boolean }>;
 }

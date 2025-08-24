@@ -19,6 +19,17 @@ declare global {
     ScubaCoderChatPanel: {
       createApp: (config: any) => any;
     };
+    vscode: {
+      postMessage(message: any): void;
+      getState(): any;
+      setState(state: any): void;
+    };
+    vscodeInitData?: {
+      providerId: string;
+      model: string;
+      candidates: Array<{ label: string; uri: string; isSelected: boolean }>;
+      availableProviderModels: Array<{ provider: string; baseUrl: string; model: string; isSelected: boolean }>;
+    };
   }
 }
 

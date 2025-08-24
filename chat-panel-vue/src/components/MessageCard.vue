@@ -1,250 +1,268 @@
 <template>
-  <div class="message-card" :class="[`role-${message.role}`, { loading: isLoading }]">
-    <div class="message-header">
-      <div class="role-badge">{{ message.role === 'user' ? 'User' : 'Assistant' }}</div>
-      <div class="timestamp">{{ formatTimestamp(message.timestamp) }}</div>
-    </div>
-    
-    <div class="message-content">
-      <div v-if="message.role === 'assistant' && isLoading" class="loading-indicator">
-        <div class="typing-dots">
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
+  <div class="message-card" :class="messageType">
+    <!-- Error Message -->
+    <div v-if="isError" class="error-message">
+      <div class="error-icon">
+        <i class="codicon codicon-error"></i>
       </div>
-      
-      <div v-else class="content-text" v-html="formatContent(message.content)"></div>
+      <div class="error-content">
+        <div class="error-text">{{ message.text }}</div>
+        <div class="error-reason">Reason: {{ message.reason || 'Unknown error' }}</div>
+        <button v-if="message.canRetry" class="try-again-btn" @click="retry">
+          Try Again
+        </button>
+      </div>
     </div>
     
-    <div v-if="message.role === 'assistant' && !isLoading" class="message-actions">
-      <button 
-        v-if="hasCodeBlocks" 
-        @click="copyCode" 
-        class="action-btn"
-        title="Copy code"
-      >
-        📋 Copy
-      </button>
-      <button 
-        v-if="hasCodeBlocks" 
-        @click="insertCode" 
-        class="action-btn"
-        title="Insert into editor"
-      >
-        ➕ Insert
-      </button>
+    <!-- User Message -->
+    <div v-else-if="isUser" class="user-message">
+      <div class="message-bubble">{{ message.text }}</div>
+      <div v-if="message.fileReference" class="file-reference">
+        <i class="codicon codicon-symbol-file"></i>
+        {{ message.fileReference }}
+      </div>
+      <div v-if="message.contextFiles && message.contextFiles.length > 0" class="context-indicator">
+        <i class="codicon codicon-arrow-right"></i>
+        Used {{ message.contextFiles.length }} reference{{ message.contextFiles.length > 1 ? 's' : '' }}
+      </div>
+    </div>
+    
+    <!-- AI Response -->
+    <div v-else class="ai-message">
+      <div class="message-content" v-html="formattedContent"></div>
+      <div class="message-actions">
+        <button class="action-btn" @click="refresh" title="Regenerate">
+          <i class="codicon codicon-refresh"></i>
+        </button>
+        <button class="action-btn" @click="thumbsDown" title="Thumbs Down">
+          <i class="codicon codicon-thumbsdown"></i>
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { Message } from '../types';
+import { useVSCode } from '../composables/useVSCode';
+
+interface FileReference {
+  path: string;
+  type: string;
+}
+
+interface Message {
+  id: string;
+  role: 'user' | 'assistant' | 'error';
+  text: string;
+  timestamp: Date;
+  fileReference?: string;
+  contextFiles?: FileReference[];
+  reason?: string;
+  canRetry?: boolean;
+}
 
 interface Props {
   message: Message;
-  isLoading?: boolean;
-}
-
-interface Emits {
-  (e: 'insert-code', code: string): void;
 }
 
 const props = defineProps<Props>();
-const emit = defineEmits<Emits>();
+const { postMessage } = useVSCode();
 
-const hasCodeBlocks = computed(() => {
-  return props.message.content.includes('```');
+const messageType = computed(() => `message-${props.message.role}`);
+const isError = computed(() => props.message.role === 'error');
+const isUser = computed(() => props.message.role === 'user');
+
+const formattedContent = computed(() => {
+  if (props.message.role === 'assistant') {
+    // Convert markdown-like content to HTML
+    return props.message.text
+      .replace(/```(\w+)?\n([\s\S]*?)```/g, '<pre class="code-block"><code>$2</code></pre>')
+      .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
+      .replace(/\n/g, '<br>');
+  }
+  return props.message.text;
 });
 
-const formatTimestamp = (timestamp: Date) => {
-  return timestamp.toLocaleTimeString();
+const retry = () => {
+  postMessage({ type: 'retry', messageId: props.message.id });
 };
 
-const formatContent = (content: string) => {
-  // Convert markdown code blocks to HTML
-  return content
-    .replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
-      const language = lang || 'text';
-      return `<div class="code-block">
-        <div class="code-header">${language}</div>
-        <pre class="code-content" data-code="${encodeURIComponent(code.trim())}">${code.trim()}</pre>
-      </div>`;
-    })
-    .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+const refresh = () => {
+  postMessage({ type: 'regenerate', messageId: props.message.id });
 };
 
-const copyCode = () => {
-  const codeBlocks = document.querySelectorAll('.code-content');
-  if (codeBlocks.length > 0) {
-    const code = Array.from(codeBlocks)
-      .map(block => (block as HTMLElement).textContent)
-      .join('\n\n');
-    
-    navigator.clipboard.writeText(code).then(() => {
-      // Show feedback
-      console.log('Code copied to clipboard');
-    });
-  }
+const thumbsDown = () => {
+  postMessage({ type: 'feedback', messageId: props.message.id, feedback: 'negative' });
 };
 
-const insertCode = () => {
-  const codeBlocks = document.querySelectorAll('.code-content');
-  if (codeBlocks.length > 0) {
-    const code = Array.from(codeBlocks)
-      .map(block => (block as HTMLElement).textContent)
-      .join('\n\n');
-    
-    emit('insert-code', code);
-  }
+const copyCode = (code: string) => {
+  navigator.clipboard.writeText(code).then(() => {
+    console.log('Code copied to clipboard');
+  });
+};
+
+const insertCode = (code: string) => {
+  postMessage({ type: 'insert-code', code });
 };
 </script>
 
 <style scoped>
 .message-card {
-  border: 1px solid var(--vscode-panel-border, #e1e4e8);
+  margin: 8px 16px;
+  padding: 12px;
   border-radius: 8px;
-  padding: 16px;
-  background: var(--vscode-editor-background, #ffffff);
   transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  margin: 4px 2px;
 }
 
 .message-card:hover {
-  border-color: var(--vscode-input-foreground, #0366d6);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-  transform: translateY(-1px);
+  background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
 }
 
-.message-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
+/* User Message Styles */
+.user-message .message-bubble {
+  background: var(--vscode-button-background, #0E639C);
+  color: var(--vscode-button-foreground, #FFFFFF);
+  padding: 12px 16px;
+  border-radius: 12px;
+  max-width: 80%;
+  word-wrap: break-word;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
-.role-badge {
+.file-reference {
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: var(--vscode-badge-background, #4A4A4A);
+  color: var(--vscode-badge-foreground, #FFFFFF);
+  border-radius: 4px;
   font-size: 12px;
-  color: var(--vscode-badge-foreground, #ffffff);
-  background: var(--vscode-badge-background, #0366d6);
-  text-transform: uppercase;
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-weight: 500;
-}
-
-.timestamp {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground, #586069);
-}
-
-.message-content {
-  margin-bottom: 12px;
-}
-
-.loading-indicator {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-}
-
-.typing-dots {
-  display: flex;
   gap: 4px;
 }
 
-.typing-dots span {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--vscode-descriptionForeground, #586069);
-  animation: typing 1.4s infinite ease-in-out;
-}
-
-.typing-dots span:nth-child(1) { animation-delay: -0.32s; }
-.typing-dots span:nth-child(2) { animation-delay: -0.16s; }
-
-@keyframes typing {
-  0%, 80%, 100% { transform: scale(0); }
-  40% { transform: scale(1); }
-}
-
-.content-text {
-  white-space: pre-wrap;
-  color: var(--vscode-foreground, #24292e);
-  line-height: 1.5;
-}
-
-.code-block {
-  margin: 12px 0;
-  border: 1px solid var(--vscode-textCodeBlock-border, #e1e4e8);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.code-header {
-  background: var(--vscode-textCodeBlock-headerBackground, #f6f8fa);
-  color: var(--vscode-textCodeBlock-headerForeground, #586069);
-  padding: 8px 12px;
+.context-indicator {
+  margin-top: 8px;
+  color: var(--vscode-descriptionForeground, #8C8C8C);
   font-size: 12px;
-  font-weight: 500;
-  border-bottom: 1px solid var(--vscode-textCodeBlock-border, #e1e4e8);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
 }
 
-.code-content {
-  background: var(--vscode-textCodeBlock-background, #f6f8fa);
-  color: var(--vscode-textCodeBlock-foreground, #24292e);
+.context-indicator:hover {
+  color: var(--vscode-foreground, #CCCCCC);
+}
+
+/* Error Message Styles */
+.error-message {
+  background: var(--vscode-inputValidation-errorBackground, #5A1D1D);
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #BE1100);
+  color: var(--vscode-errorForeground, #F48771);
+  padding: 16px;
+  border-radius: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.error-icon {
+  color: var(--vscode-errorForeground, #F48771);
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.error-content {
+  flex: 1;
+}
+
+.error-text {
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.error-reason {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-bottom: 12px;
+}
+
+.try-again-btn {
+  background: var(--vscode-button-background, #0E639C);
+  color: var(--vscode-button-foreground, #FFFFFF);
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background-color 0.1s ease;
+}
+
+.try-again-btn:hover {
+  background: var(--vscode-button-hoverBackground, #1177BB);
+}
+
+/* AI Message Styles */
+.ai-message {
+  background: var(--vscode-editor-background, #1E1E1E);
+  border: 1px solid var(--vscode-panel-border, #3C3C3C);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.message-content {
+  color: var(--vscode-foreground, #CCCCCC);
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.message-content :deep(.code-block) {
+  background: var(--vscode-textCodeBlock-background, #2D2D30);
+  border: 1px solid var(--vscode-textCodeBlock-border, #3C3C3C);
+  border-radius: 4px;
   padding: 12px;
-  margin: 0;
-  font-family: var(--vscode-editor-font-family, 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace);
-  font-size: var(--vscode-editor-font-size, 13px);
-  line-height: 1.4;
+  margin: 8px 0;
   overflow-x: auto;
-  white-space: pre;
+  font-family: var(--vscode-editor-font-family, 'Consolas', 'Monaco', 'Courier New', monospace);
 }
 
-.inline-code {
-  background: var(--vscode-textCodeBlock-background, #f6f8fa);
-  color: var(--vscode-textCodeBlock-foreground, #24292e);
+.message-content :deep(.inline-code) {
+  background: var(--vscode-textCodeBlock-background, #2D2D30);
   padding: 2px 4px;
   border-radius: 3px;
-  font-family: var(--vscode-editor-font-family, 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace);
-  font-size: 0.9em;
+  font-family: var(--vscode-editor-font-family, 'Consolas', 'Monaco', 'Courier New', monospace);
 }
 
 .message-actions {
   display: flex;
   gap: 8px;
-  margin-top: 12px;
+  justify-content: flex-end;
 }
 
 .action-btn {
-  background: var(--vscode-button-secondaryBackground, #f6f8fa);
-  color: var(--vscode-button-secondaryForeground, #24292e);
-  border: 1px solid var(--vscode-button-secondaryBorder, #e1e4e8);
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 12px;
+  background: transparent;
+  color: var(--vscode-foreground, #CCCCCC);
+  border: 1px solid var(--vscode-panel-border, #3C3C3C);
+  border-radius: 4px;
+  padding: 6px 8px;
   cursor: pointer;
-  transition: all 0.2s;
+  font-size: 12px;
+  transition: all 0.1s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .action-btn:hover {
-  background: var(--vscode-button-secondaryHoverBackground, #e1e4e8);
-  border-color: var(--vscode-button-secondaryHoverBorder, #d0d7de);
+  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+  border-color: var(--vscode-focusBorder, #007ACC);
 }
 
-.role-user {
-  border-left: 4px solid var(--vscode-button-background, #0366d6);
-}
-
-.role-assistant {
-  border-left: 4px solid var(--vscode-badge-background, #28a745);
-}
-
-.loading {
-  opacity: 0.7;
+.codicon {
+  font-size: 14px;
 }
 </style>

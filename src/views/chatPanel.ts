@@ -107,11 +107,24 @@ export class ChatPanel {
               this.panel.webview.postMessage({ type: 'reply', text: res.text });
             } catch (error) {
               warn('Error in provider.chat:', error);
-              this.panel.webview.postMessage({ type: 'reply', text: `Error: ${String(error)}` });
+              this.panel.webview.postMessage({ 
+                type: 'error', 
+                text: `Sorry, your request failed. Please try again. Request id: ${this.generateRequestId()}`,
+                reason: String(error),
+                canRetry: true
+              });
             }
             break;
           }
           case 'insert': {
+            const code: string = msg.code ?? '';
+            const editor = vscode.window.activeTextEditor;
+            if (editor) {
+              await editor.edit(editBuilder => editBuilder.insert(editor.selection.active, code));
+            }
+            break;
+          }
+          case 'insert-code': {
             const code: string = msg.code ?? '';
             const editor = vscode.window.activeTextEditor;
             if (editor) {
@@ -165,6 +178,84 @@ export class ChatPanel {
             
             break;
           }
+          case 'retry': {
+            // Handle retry logic for failed messages
+            info('Retrying message:', msg.messageId);
+            // You could implement retry logic here
+            break;
+          }
+          case 'regenerate': {
+            // Handle regenerate logic for AI responses
+            info('Regenerating response for message:', msg.messageId);
+            // You could implement regenerate logic here
+            break;
+          }
+          case 'feedback': {
+            // Handle user feedback on messages
+            info('User feedback:', msg.feedback, 'for message:', msg.messageId);
+            // You could implement feedback logging here
+            break;
+          }
+          case 'newChat': {
+            // Handle new chat request
+            info('Starting new chat');
+            // Clear any existing state if needed
+            break;
+          }
+          case 'addContext': {
+            // Handle add context request
+            info('Adding context');
+            // You could implement context selection logic here
+            break;
+          }
+          case 'openTools': {
+            // Handle tools request
+            info('Opening tools');
+            // You could implement tools panel logic here
+            break;
+          }
+          case 'toggleVoice': {
+            // Handle voice input toggle
+            info('Toggling voice input');
+            // You could implement voice input logic here
+            break;
+          }
+          case 'refresh': {
+            // Handle refresh request
+            info('Refreshing chat');
+            // You could implement refresh logic here
+            break;
+          }
+          case 'undo': {
+            // Handle undo request
+            info('Undoing last action');
+            // You could implement undo logic here
+            break;
+          }
+          case 'openSettings': {
+            // Handle settings request
+            info('Opening settings');
+            vscode.commands.executeCommand('workbench.action.openSettings', 'scubacoder');
+            break;
+          }
+          case 'addPanel': {
+            // Handle add panel request
+            info('Adding new panel');
+            // You could implement panel creation logic here
+            break;
+          }
+          case 'maximize': {
+            // Handle maximize request
+            info('Maximizing panel');
+            // You could implement maximize logic here
+            break;
+          }
+          case 'close': {
+            // Handle close request
+            info('Closing panel');
+            this.panel.dispose();
+            break;
+          }
           case 'log': {
             const level = msg.level as string;
             const message = msg.message as string;
@@ -181,6 +272,7 @@ export class ChatPanel {
           }
 
           default:
+            info('Unknown message type:', msg.type);
             break;
         }
       } catch (e) {
@@ -205,6 +297,10 @@ export class ChatPanel {
     return text;
   }
 
+  private generateRequestId(): string {
+    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  }
+
   private getHtml(
     nonce: string,
     init: {
@@ -223,6 +319,9 @@ export class ChatPanel {
     const jsUri = this.panel.webview.asWebviewUri(
       vscode.Uri.joinPath(this.extUri, 'out', 'views', 'chat-panel-vue', 'index.umd.js')
     );
+    const codiconCssUri = this.panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extUri, 'out', 'views', 'chat-panel-vue', 'codicon.css')
+    );
     
     // Create initialization data for Vue app
     const initData = {
@@ -240,16 +339,11 @@ export class ChatPanel {
       <html lang="en">
       <head>
         <meta charset="UTF-8" />
-        <meta http-equiv="Content-Security-Policy" 
-          content="default-src * vscode-resource: https: 'unsafe-inline' 'unsafe-eval';
-          script-src vscode-resource: blob: data: https: 'unsafe-inline' 'unsafe-eval';
-          style-src vscode-resource: https: 'unsafe-inline';
-          img-src vscode-resource: data: https:;
-          connect-src vscode-resource: blob: data: https: http:;">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src ${this.panel.webview.cspSource}; script-src 'nonce-${nonce}' ${jsUri}; connect-src 'none'; font-src ${this.panel.webview.cspSource}; object-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; base-uri 'none';" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
         <title>ScubaCoder — Chat</title>
-        <link rel="stylesheet" href="${cssUri}" rel="preload" as="style" />
-        <link href="${jsUri}" rel="preload" as="script" />
+        <link rel="stylesheet" href="${cssUri}" />
+        <link rel="stylesheet" href="${codiconCssUri}" />
       </head>
       <body>
         <div id="app">
@@ -259,30 +353,36 @@ export class ChatPanel {
             <small>Initialization data: ${JSON.stringify(initData).substring(0, 200)}...</small>
           </div>
         </div>
-        <script>
+        
+        <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
+          
+          // Override console methods to send logs to VS Code
           ['log','warn','error'].forEach(level => {
             const original = console[level].bind(console);
             console[level] = (...args) => {
-              vscode.postMessage({ type: 'log', level, args });
+              vscode.postMessage({ type: 'log', level, message: args.join(' '), data: args });
               original(...args);
             };
           });
-          </script>
-                          
-        <script src="${jsUri}"></script>                
-          <script>
-          console.log("Chat panel initialization started");
+        </script>
+        
+        <script nonce="${nonce}" src="${jsUri}"></script>
+        <script nonce="${nonce}">
+          // Initialize the Vue app with extension data
+          console.log('Chat panel initialization started');
+          console.log('Init data:', ${JSON.stringify(initData)});
           
-          if (typeof ScubaCoderChatPanel !== 'undefined') {            
-            console.log("Vue app found, initializing...");
-            
-            console.log("Vue app initialized with data");
+          if (typeof ScubaCoderChatPanel !== 'undefined') {
+            console.log('Vue app found, initializing...');
+            // The Vue app should automatically mount and initialize
+            // Pass initial data through window for the Vue app to access
+            window.vscodeInitData = ${JSON.stringify(initData)};
+            console.log('Vue app initialized with data');
           } else {
-            console.log("Vue app failed to load");
+            console.error('Vue app failed to load');
             document.getElementById('app').innerHTML = '<div style="padding: 20px; text-align: center; color: #f44336;">Failed to load chat interface - Vue app not found</div>';
-          }        
-
+          }
         </script>
       </body>
       </html>
