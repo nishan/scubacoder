@@ -83,7 +83,7 @@ export class ChatPanel {
           case 'chat': {
             info('Processing chat case');
             const text: string = msg.text ?? '';
-            const maxTokens = 512;
+            const maxTokens = 2048; // Increased for better responses
             const temperature = 0.3;
             const contextUris: string[] = Array.isArray(msg.contextUris) ? msg.contextUris : [];
 
@@ -93,15 +93,35 @@ export class ChatPanel {
 
             try {
               info('Calling provider.chat');
-              const system = 'You are a careful coding assistant. Prefer short, accurate answers. Return code in triple backticks.';
+              
+              // Build context from files if available
+              let contextContent = '';
+              if (contextUris.length > 0) {
+                contextContent = await this.buildContextFromFiles(contextUris);
+              }
+              
+              // Enhanced system prompt with context
+              const systemPrompt = contextContent 
+                ? `You are a careful coding assistant. You have access to the following files:\n\n${contextContent}\n\nPrefer short, accurate answers. Return code in triple backticks. Use the file context to provide more relevant responses.`
+                : 'You are a careful coding assistant. Prefer short, accurate answers. Return code in triple backticks.';
+              
               const res = await this.provider.chat({
-                messages: [{ role: 'system', content: system }, { role: 'user', content: text }],
+                messages: [
+                  { role: 'system', content: systemPrompt }, 
+                  { role: 'user', content: text }
+                ],
                 maxTokens,
                 temperature
               });
 
               info('Got response from provider:', res);
-              this.audit.record({ kind: 'chat', model: this.provider.id, promptPreview: text.slice(0, 200), files: contextUris, timestamp: new Date().toISOString() });
+              this.audit.record({ 
+                kind: 'chat', 
+                model: this.provider.id, 
+                promptPreview: text.slice(0, 200), 
+                files: contextUris, 
+                timestamp: new Date().toISOString() 
+              });
 
               info('Sending reply to webview');
               this.panel.webview.postMessage({ type: 'reply', text: res.text });
@@ -181,13 +201,75 @@ export class ChatPanel {
           case 'retry': {
             // Handle retry logic for failed messages
             info('Retrying message:', msg.messageId);
-            // You could implement retry logic here
+            const messageId = msg.messageId;
+            const message = msg.message;
+            
+            if (message && message.text) {
+              // Retry the failed message
+              this.panel.webview.postMessage({ type: 'loading' });
+              
+              try {
+                const res = await this.provider.chat({
+                  messages: [
+                    { role: 'system', content: 'You are a careful coding assistant. Prefer short, accurate answers. Return code in triple backticks.' },
+                    { role: 'user', content: message.text }
+                  ],
+                  maxTokens: 2048,
+                  temperature: 0.3
+                });
+                
+                this.panel.webview.postMessage({ 
+                  type: 'reply', 
+                  text: res.text,
+                  retryFor: messageId 
+                });
+              } catch (error) {
+                warn('Error in retry:', error);
+                this.panel.webview.postMessage({ 
+                  type: 'error', 
+                  text: `Retry failed. Please try again. Request id: ${this.generateRequestId()}`,
+                  reason: String(error),
+                  canRetry: true
+                });
+              }
+            }
             break;
           }
           case 'regenerate': {
             // Handle regenerate logic for AI responses
             info('Regenerating response for message:', msg.messageId);
-            // You could implement regenerate logic here
+            const messageId = msg.messageId;
+            const userMessage = msg.userMessage;
+            
+            if (userMessage && userMessage.text) {
+              // Regenerate the AI response
+              this.panel.webview.postMessage({ type: 'loading' });
+              
+              try {
+                const res = await this.provider.chat({
+                  messages: [
+                    { role: 'system', content: 'You are a careful coding assistant. Prefer short, accurate answers. Return code in triple backticks.' },
+                    { role: 'user', content: userMessage.text }
+                  ],
+                  maxTokens: 2048,
+                  temperature: 0.3
+                });
+                
+                this.panel.webview.postMessage({ 
+                  type: 'reply', 
+                  text: res.text,
+                  regenerateFor: messageId 
+                });
+              } catch (error) {
+                warn('Error in regenerate:', error);
+                this.panel.webview.postMessage({ 
+                  type: 'error', 
+                  text: `Regeneration failed. Please try again. Request id: ${this.generateRequestId()}`,
+                  reason: String(error),
+                  canRetry: true
+                });
+              }
+            }
             break;
           }
           case 'feedback': {
@@ -205,7 +287,37 @@ export class ChatPanel {
           case 'addContext': {
             // Handle add context request
             info('Adding context');
-            // You could implement context selection logic here
+            
+            // Show file picker to add more context files
+            const uris = await vscode.window.showOpenDialog({
+              canSelectFiles: true,
+              canSelectFolders: false,
+              canSelectMany: true,
+              openLabel: 'Add Context Files'
+            });
+            
+            if (uris && uris.length > 0) {
+              // Add new files to candidates
+              for (const uri of uris) {
+                if (uri.scheme === 'file' && !this.policy.isDenied(uri)) {
+                  const relativePath = vscode.workspace.asRelativePath(uri);
+                  this.candidates.push({ 
+                    label: relativePath, 
+                    uri: uri.toString() 
+                  });
+                }
+              }
+              
+              // Update webview with new context files
+              this.panel.webview.postMessage({ 
+                type: 'contextFiles',
+                files: this.candidates.map(c => ({
+                  path: c.label,
+                  type: c.label.split('.').pop() || 'file',
+                  name: c.label.split('/').pop() || c.label
+                }))
+              });
+            }
             break;
           }
           case 'openTools': {
@@ -301,6 +413,87 @@ export class ChatPanel {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   }
 
+  private async buildContextFromFiles(uris: string[]): Promise<string> {
+    const contextContent: string[] = [];
+    
+    for (const uri of uris) {
+      try {
+        const doc = await vscode.workspace.openTextDocument(uri);
+        const text = doc.getText();
+        const fileName = vscode.workspace.asRelativePath(uri);
+        const fileExtension = fileName.split('.').pop()?.toLowerCase();
+        
+        // Determine file type and provide appropriate context
+        let fileType = 'Unknown';
+        let contentPreview = '';
+        
+        if (fileExtension) {
+          switch (fileExtension) {
+            case 'ts':
+            case 'js':
+            case 'tsx':
+            case 'jsx':
+              fileType = 'TypeScript/JavaScript';
+              // Look for imports, exports, and class/function definitions
+              const lines = text.split('\n');
+              const relevantLines = lines.filter(line => 
+                line.includes('import ') || 
+                line.includes('export ') || 
+                line.includes('class ') || 
+                line.includes('function ') ||
+                line.includes('const ') ||
+                line.includes('let ') ||
+                line.includes('var ')
+              ).slice(0, 10); // Limit to first 10 relevant lines
+              contentPreview = relevantLines.join('\n');
+              break;
+              
+            case 'vue':
+              fileType = 'Vue Component';
+              // Extract template, script, and style sections
+              const templateMatch = text.match(/<template>([\s\S]*?)<\/template>/);
+              const scriptMatch = text.match(/<script>([\s\S]*?)<\/script>/);
+              if (templateMatch) contentPreview += `Template: ${templateMatch[1].slice(0, 100)}...\n`;
+              if (scriptMatch) contentPreview += `Script: ${scriptMatch[1].slice(0, 100)}...\n`;
+              break;
+              
+            case 'md':
+              fileType = 'Markdown';
+              contentPreview = text.split('\n').slice(0, 5).join('\n'); // First 5 lines
+              break;
+              
+            case 'json':
+              fileType = 'JSON Configuration';
+              contentPreview = text.slice(0, 200);
+              break;
+              
+            case 'yaml':
+            case 'yml':
+              fileType = 'YAML Configuration';
+              contentPreview = text.split('\n').slice(0, 10).join('\n');
+              break;
+              
+            default:
+              fileType = 'Text File';
+              contentPreview = text.split('\n').slice(0, 5).join('\n');
+          }
+        }
+        
+        contextContent.push(`File: ${fileName} (${fileType})`);
+        if (contentPreview.trim()) {
+          contextContent.push(`Content Preview:\n${contentPreview}`);
+        }
+        contextContent.push(`---`);
+        
+      } catch (error) {
+        warn(`Failed to read file for context: ${uri}`, error);
+        contextContent.push(`Failed to read file: ${uri}`);
+      }
+    }
+    
+    return contextContent.join('\n\n');
+  }
+
   private getHtml(
     nonce: string,
     init: {
@@ -357,28 +550,87 @@ export class ChatPanel {
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
           
+          // Safe serialization function for postMessage
+          function safeSerialize(obj) {
+            try {
+              // Handle primitive types
+              if (obj === null || obj === undefined) return obj;
+              if (typeof obj === 'string' || typeof obj === 'number' || typeof obj === 'boolean') return obj;
+              
+              // Handle arrays
+              if (Array.isArray(obj)) {
+                return obj.map(item => safeSerialize(item));
+              }
+              
+              // Handle objects
+              if (typeof obj === 'object') {
+                const result = {};
+                for (const key in obj) {
+                  if (obj.hasOwnProperty(key)) {
+                    try {
+                      result[key] = safeSerialize(obj[key]);
+                    } catch (e) {
+                      result[key] = '[Non-serializable value]';
+                    }
+                  }
+                }
+                return result;
+              }
+              
+              // Handle functions and other non-serializable types
+              return '[Non-serializable value]';
+            } catch (e) {
+              return '[Serialization error]';
+            }
+          }
+          
           // Override console methods to send logs to VS Code
           ['log','warn','error'].forEach(level => {
             const original = console[level].bind(console);
             console[level] = (...args) => {
-              vscode.postMessage({ type: 'log', level, message: args.join(' '), data: args });
+              try {
+                // Safely serialize the args before sending
+                const safeData = safeSerialize(args);
+                vscode.postMessage({ 
+                  type: 'log', 
+                  level, 
+                  message: args.map(arg => String(arg)).join(' '), 
+                  data: safeData 
+                });
+              } catch (e) {
+                // Fallback if serialization fails
+                vscode.postMessage({ 
+                  type: 'log', 
+                  level, 
+                  message: 'Console message (serialization failed)', 
+                  data: null 
+                });
+              }
               original(...args);
             };
           });
-        </script>
-        
-        <script nonce="${nonce}" src="${jsUri}"></script>
-        <script nonce="${nonce}">
+          
           // Initialize the Vue app with extension data
           console.log('Chat panel initialization started');
           console.log('Init data:', ${JSON.stringify(initData)});
           
+          // Set the initialization data BEFORE loading the Vue app
+          window.vscodeInitData = ${JSON.stringify(initData)};
+          console.log('vscodeInitData set:', window.vscodeInitData);
+        </script>
+        
+        <script nonce="${nonce}" src="${jsUri}"></script>
+        <script nonce="${nonce}">
+          // Verify the Vue app loaded and can access the data
           if (typeof ScubaCoderChatPanel !== 'undefined') {
-            console.log('Vue app found, initializing...');
-            // The Vue app should automatically mount and initialize
-            // Pass initial data through window for the Vue app to access
-            window.vscodeInitData = ${JSON.stringify(initData)};
-            console.log('Vue app initialized with data');
+            console.log('Vue app found, checking initialization data...');
+            console.log('Available vscodeInitData:', window.vscodeInitData);
+            
+            if (window.vscodeInitData) {
+              console.log('Vue app initialized with data successfully');
+            } else {
+              console.error('vscodeInitData is missing when Vue app loads');
+            }
           } else {
             console.error('Vue app failed to load');
             document.getElementById('app').innerHTML = '<div style="padding: 20px; text-align: center; color: #f44336;">Failed to load chat interface - Vue app not found</div>';

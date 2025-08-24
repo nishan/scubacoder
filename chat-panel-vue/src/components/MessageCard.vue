@@ -34,6 +34,9 @@
         <button class="action-btn" @click="refresh" title="Regenerate">
           <i class="codicon codicon-refresh"></i>
         </button>
+        <button class="action-btn" @click="thumbsUp" title="Thumbs Up">
+          <i class="codicon codicon-thumbsup"></i>
+        </button>
         <button class="action-btn" @click="thumbsDown" title="Thumbs Down">
           <i class="codicon codicon-thumbsdown"></i>
         </button>
@@ -85,25 +88,52 @@ const formattedContent = computed(() => {
 });
 
 const retry = () => {
-  postMessage({ type: 'retry', messageId: props.message.id });
+  postMessage({ 
+    type: 'retry', 
+    messageId: props.message.id,
+    message: { text: props.message.text }
+  });
 };
 
 const refresh = () => {
-  postMessage({ type: 'regenerate', messageId: props.message.id });
+  // Send regenerate request - the extension will handle finding the user message
+  postMessage({ 
+    type: 'regenerate', 
+    messageId: props.message.id
+  });
 };
 
 const thumbsDown = () => {
-  postMessage({ type: 'feedback', messageId: props.message.id, feedback: 'negative' });
+  postMessage({ 
+    type: 'feedback', 
+    messageId: props.message.id, 
+    feedback: 'negative' 
+  });
+};
+
+const thumbsUp = () => {
+  postMessage({ 
+    type: 'feedback', 
+    messageId: props.message.id, 
+    feedback: 'positive' 
+  });
 };
 
 const copyCode = (code: string) => {
   navigator.clipboard.writeText(code).then(() => {
-    console.log('Code copied to clipboard');
+    postMessage({ 
+      type: 'log', 
+      level: 'info', 
+      message: 'Code copied to clipboard' 
+    });
   });
 };
 
 const insertCode = (code: string) => {
-  postMessage({ type: 'insert-code', code });
+  postMessage({ 
+    type: 'insert-code', 
+    code: code 
+  });
 };
 </script>
 

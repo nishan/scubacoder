@@ -18,7 +18,6 @@
       <div class="input-actions">
         <button class="context-btn" @click="addContext">
           <i class="codicon codicon-add"></i>
-          Add Context...
         </button>
         <div v-if="currentFile" class="current-file">
           <i class="codicon codicon-eye"></i>
@@ -27,50 +26,63 @@
       </div>
       
       <div class="input-container">
+        <!-- Top input elements -->
+        <div class="input-top-elements">
+          <button class="mention-btn" title="Mentions/Commands">
+            <span>@</span>
+          </button>
+          <div class="tab-indicator" v-if="contextFiles.length > 0">
+            <i class="codicon codicon-symbol-file"></i>
+            <span>{{ contextFiles.length }} Tab{{ contextFiles.length > 1 ? 's' : '' }}</span>
+          </div>
+        </div>
+        
+        <!-- Main textarea -->
         <textarea 
           v-model="inputText"
           class="chat-textarea"
-          placeholder="Ask me anything..."
+          placeholder="Plan, search, build anything... privately."
           @keydown.enter.exact="sendMessage"
           @keydown.enter.shift.exact="newLine"
           ref="textareaRef"
         ></textarea>
         
-        <div class="input-controls">
-          <div class="agent-selector" @click="toggleAgentSelector">
-            <span class="agent-label">Agent</span>
-            <span class="agent-model">{{ selectedAgent }}</span>
-            <i class="codicon codicon-chevron-down"></i>
+        <!-- Bottom controls -->
+        <div class="input-bottom-controls">
+          <div class="left-controls">
+            <button class="agent-btn" @click="toggleAgentSelector">
+              <i class="codicon codicon-infinity"></i>
+              <span>{{ selectedAgent }}</span>
+            </button>
+            
+            <!-- Agent Selector Dropdown -->
+            <div v-if="showAgentSelector" class="agent-dropdown">
+              <div 
+                v-for="agent in availableAgents" 
+                :key="agent.id"
+                class="agent-option"
+                :class="{ 'selected': agent.id === selectedAgentId }"
+                @click="selectAgent(agent)"
+              >
+                <span class="agent-name">{{ agent.name }}</span>
+                <span class="agent-version">{{ agent.version }}</span>
+                <i v-if="agent.id === selectedAgentId" class="codicon codicon-check"></i>
+              </div>
+            </div>
           </div>
           
-          <div class="action-buttons">
-            <button class="tool-btn" @click="openTools" title="Tools">
-              <i class="codicon codicon-tools"></i>
-            </button>
-            <button class="voice-btn" @click="toggleVoice" title="Voice Input">
-              <i class="codicon codicon-mic"></i>
-            </button>
-            <button class="send-btn" @click="sendMessage" :disabled="!inputText.trim()" title="Send Message">
-              <i class="codicon codicon-play"></i>
-            </button>
-            <button class="new-chat-btn" @click="newChat" title="New Chat">
-              <i class="codicon codicon-plus"></i>
+          <div class="right-controls">
+            <!-- Floating send button -->
+            <button 
+              class="floating-send-btn" 
+              @click="sendMessage" 
+              :disabled="!inputText.trim()" 
+              title="Send Message"
+            >
+              <i class="codicon codicon-arrow-up"></i>
             </button>
           </div>
         </div>
-      </div>
-    </div>
-    
-    <!-- Agent Selector Dropdown -->
-    <div v-if="showAgentSelector" class="agent-dropdown">
-      <div 
-        v-for="agent in availableAgents" 
-        :key="agent.id"
-        class="agent-option"
-        @click="selectAgent(agent)"
-      >
-        <span class="agent-name">{{ agent.name }}</span>
-        <span class="agent-version">{{ agent.version }}</span>
       </div>
     </div>
   </div>
@@ -119,8 +131,20 @@ const showAgentSelector = ref(false);
 const textareaRef = ref<HTMLTextAreaElement>();
 
 const selectedAgent = computed(() => {
+  console.log('ChatInput - selectedAgent computed - availableAgents:', props.availableAgents);
+  console.log('ChatInput - selectedAgent computed - selectedAgentId:', props.selectedAgentId);
   const agent = props.availableAgents.find(a => a.id === props.selectedAgentId);
-  return agent ? `${agent.name} (${agent.version})` : 'Select Agent';
+  console.log('ChatInput - selectedAgent computed - found agent:', agent);
+  
+  if (agent) {
+    // Show a shorter, more readable version
+    const shortName = agent.provider === 'ollama' ? 'Ollama' : 'vLLM';
+    const shortModel = agent.version.length > 20 ? agent.version.substring(0, 20) + '...' : agent.version;
+    return `${shortName}: ${shortModel}`;
+  }
+  
+  // Fallback text
+  return 'Select Agent';
 });
 
 const getFileIcon = (type: string) => {
@@ -161,12 +185,49 @@ const newChat = () => {
 };
 
 const toggleAgentSelector = () => {
-  showAgentSelector.value = !showAgentSelector.value;
+  console.log('ChatInput - toggleAgentSelector - availableAgents:', props.availableAgents);
+  console.log('ChatInput - toggleAgentSelector - showAgentSelector before:', showAgentSelector.value);
+  
+  if (!showAgentSelector.value) {
+    // Opening the dropdown
+    showAgentSelector.value = true;
+    // Position the dropdown after it's rendered
+    nextTick(() => {
+      console.log('ChatInput - toggleAgentSelector - positionDropdown called');
+      positionDropdown();
+    });
+  } else {
+    // Closing the dropdown
+    showAgentSelector.value = false;
+  }
+  
+  console.log('ChatInput - toggleAgentSelector - showAgentSelector after:', showAgentSelector.value);
 };
 
 const selectAgent = (agent: Agent) => {
-  postMessage({ type: 'changeProviderModel', provider: agent.provider, model: agent.id });
+  console.log('ChatInput - selectAgent called with:', agent);
+  
+  // Parse the agent ID to extract provider and model
+  const [provider, model] = agent.id.split(':');
+  console.log('ChatInput - Parsed provider:', provider, 'model:', model);
+  
+  postMessage({ 
+    type: 'changeProviderModel', 
+    provider: provider, 
+    model: model 
+  });
+  
+  // Close the dropdown
   showAgentSelector.value = false;
+  
+  // Add visual feedback
+  const agentBtn = document.querySelector('.agent-btn');
+  if (agentBtn) {
+    agentBtn.classList.add('agent-changed');
+    setTimeout(() => {
+      agentBtn.classList.remove('agent-changed');
+    }, 1000);
+  }
 };
 
 const openTools = () => {
@@ -188,6 +249,232 @@ const resizeTextarea = () => {
 // Watch for input changes to resize
 import { watch } from 'vue';
 watch(inputText, resizeTextarea);
+
+// Watch for changes in availableAgents prop
+watch(() => props.availableAgents, (newAgents, oldAgents) => {
+  console.log('ChatInput - availableAgents prop changed:', { old: oldAgents, new: newAgents });
+  console.log('ChatInput - availableAgents length:', newAgents?.length);
+  console.log('ChatInput - availableAgents content:', newAgents);
+}, { immediate: true });
+
+// Watch for changes in selectedAgentId prop
+watch(() => props.selectedAgentId, (newId, oldId) => {
+  console.log('ChatInput - selectedAgentId prop changed:', { old: oldId, new: newId });
+  console.log('ChatInput - Current availableAgents:', props.availableAgents);
+  console.log('ChatInput - Found agent for new ID:', props.availableAgents.find(a => a.id === newId));
+}, { immediate: true });
+
+// Debug when component mounts
+import { onMounted } from 'vue';
+onMounted(() => {
+  console.log('ChatInput - Component mounted');
+  console.log('ChatInput - Initial props - availableAgents:', props.availableAgents);
+  console.log('ChatInput - Initial props - selectedAgentId:', props.selectedAgentId);
+  console.log('ChatInput - Initial selectedAgent computed:', selectedAgent.value);
+  
+  // Add window resize listener for dropdown positioning
+  window.addEventListener('resize', handleWindowResize);
+  
+  // Add scroll listener for dropdown positioning
+  window.addEventListener('scroll', handleScroll, true);
+  document.addEventListener('scroll', handleScroll, true);
+  
+  // Setup mutation observer for dropdown content changes
+  //setupDropdownObserver();
+});
+
+
+
+// Handle window resize to reposition dropdown if needed
+const handleWindowResize = () => {
+  if (showAgentSelector.value) {
+    nextTick(() => {
+      positionDropdown();
+    });
+  }
+};
+
+// Handle scroll to reposition dropdown if needed
+const handleScroll = () => {
+  if (showAgentSelector.value) {
+    nextTick(() => {
+      positionDropdown();
+    });
+  }
+};
+
+// Cleanup on unmount
+import { onUnmounted } from 'vue';
+onUnmounted(() => {
+  window.removeEventListener('resize', handleWindowResize);
+  window.removeEventListener('scroll', handleScroll, true);
+  document.removeEventListener('scroll', handleScroll, true);
+  document.removeEventListener('click', handleClickOutside);
+  
+  // Cleanup mutation observer
+  if ((window as any).dropdownObserver) {
+    (window as any).dropdownObserver.disconnect();
+  }
+});
+
+// Handle clicks outside dropdown to close it
+const handleClickOutside = (event: Event) => {
+  const target = event.target as HTMLElement;
+  if (!target.closest('.agent-btn') && !target.closest('.agent-dropdown')) {
+    showAgentSelector.value = false;
+  }
+};
+
+// Add click outside listener when dropdown opens
+watch(showAgentSelector, (isOpen) => {
+  if (isOpen) {
+    // Use nextTick to ensure the dropdown is rendered before adding the listener
+    nextTick(() => {
+      document.addEventListener('click', handleClickOutside);
+    });
+  } else {
+    document.removeEventListener('click', handleClickOutside);
+  }
+});
+
+// Position dropdown to stay within viewport
+const positionDropdown = () => {
+  const dropdown = document.querySelector('.agent-dropdown') as HTMLElement;
+  const button = document.querySelector('.agent-btn') as HTMLElement;
+  
+  if (!dropdown || !button) {
+    console.warn('Positioning failed: dropdown or button not found');
+    return;
+  }
+  
+  console.log('Starting dropdown positioning...');
+  
+  // Get button position relative to viewport
+  const buttonRect = button.getBoundingClientRect();
+  const viewportHeight = window.innerHeight;
+  const viewportWidth = window.innerWidth;
+  
+  // Reset all positioning styles
+  dropdown.style.top = '';
+  dropdown.style.bottom = '';
+  dropdown.style.left = '';
+  dropdown.style.right = '';
+  dropdown.style.transform = '';
+  
+  // First, position the dropdown to get its dimensions
+  dropdown.style.top = 'calc(100% + 8px)';
+  dropdown.style.left = '0';
+  
+  // Force a reflow to get accurate dimensions
+  dropdown.offsetHeight;
+  
+  // Get dropdown dimensions
+  const dropdownHeight = dropdown.offsetHeight;
+  const dropdownWidth = dropdown.offsetWidth;
+  
+  console.log('Dropdown dimensions:', { dropdownHeight, dropdownWidth });
+  console.log('Button position:', buttonRect);
+  console.log('Viewport:', { viewportHeight, viewportWidth });
+  
+  // Calculate available space
+  const spaceBelow = viewportHeight - buttonRect.bottom;
+  const spaceAbove = buttonRect.top;
+  
+  console.log('Available space:', { spaceBelow, spaceAbove });
+  
+  // Determine vertical position
+  let verticalPosition: 'above' | 'below' = 'below';
+  
+  if (spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
+    // Position above the button
+    verticalPosition = 'above';
+    dropdown.style.bottom = 'calc(100% + 8px)';
+    dropdown.style.top = 'auto';
+    console.log('Positioning dropdown ABOVE button');
+  } else {
+    // Position below the button (default)
+    verticalPosition = 'below';
+    dropdown.style.top = 'calc(100% + 8px)';
+    dropdown.style.bottom = 'auto';
+    console.log('Positioning dropdown BELOW button');
+  }
+  
+  // Determine horizontal position
+  let horizontalPosition: 'left' | 'center' | 'right' = 'center';
+  
+  // Calculate button center
+  const buttonCenter = buttonRect.left + (buttonRect.width / 2);
+  const dropdownCenter = dropdownWidth / 2;
+  
+  // Check if dropdown would go off-screen
+  if (buttonCenter - dropdownCenter < 0) {
+    // Align to left edge
+    horizontalPosition = 'left';
+    dropdown.style.left = '0';
+    dropdown.style.right = 'auto';
+    console.log('Aligning dropdown to LEFT edge');
+  } else if (buttonCenter + dropdownCenter > viewportWidth) {
+    // Align to right edge
+    horizontalPosition = 'right';
+    dropdown.style.right = '0';
+    dropdown.style.left = 'auto';
+    console.log('Aligning dropdown to RIGHT edge');
+  } else {
+    // Center on button
+    horizontalPosition = 'center';
+    dropdown.style.left = '50%';
+    dropdown.style.right = 'auto';
+    dropdown.style.transform = 'translateX(-50%)';
+    console.log('Centering dropdown on button');
+  }
+  
+  // Make dropdown visible
+  dropdown.style.opacity = '1';
+  dropdown.style.pointerEvents = 'auto';
+  
+  // Start observing the dropdown for content changes
+  startObservingDropdown();
+  
+  // Final safety check
+  nextTick(() => {
+    const finalRect = dropdown.getBoundingClientRect();
+    
+    console.log('Final dropdown position:', {
+      verticalPosition,
+      horizontalPosition,
+      finalRect,
+      appliedStyles: {
+        top: dropdown.style.top,
+        bottom: dropdown.style.bottom,
+        left: dropdown.style.left,
+        right: dropdown.style.right,
+        transform: dropdown.style.transform
+      }
+    });
+    
+    // Additional safety adjustments if needed
+    if (finalRect.left < 0) {
+      dropdown.style.left = '0';
+      dropdown.style.transform = '';
+      console.log('Adjusted: moved to left edge');
+    } else if (finalRect.right > viewportWidth) {
+      dropdown.style.right = '0';
+      dropdown.style.left = 'auto';
+      dropdown.style.transform = '';
+      console.log('Adjusted: moved to right edge');
+    }
+    
+    if (finalRect.top < 0) {
+      dropdown.style.top = 'calc(100% + 8px)';
+      dropdown.style.bottom = 'auto';
+      console.log('Adjusted: moved below button');
+    } else if (finalRect.bottom > viewportHeight) {
+      dropdown.style.bottom = 'calc(100% + 8px)';
+      dropdown.style.top = 'auto';
+      console.log('Adjusted: moved above button');
+    }
+  });
+};
 </script>
 
 <style scoped>
@@ -285,14 +572,64 @@ watch(inputText, resizeTextarea);
 /* Input Container */
 .input-container {
   position: relative;
+  background: var(--vscode-input-background, #3C3C3C);
+  border: 1px solid var(--vscode-input-border, #3C3C3C);
+  border-radius: 5px;
+  padding: 8px;
+  transition: border-color 0.1s ease;
+}
+
+.input-container:focus-within {
+  border-color: var(--vscode-focusBorder, #007ACC);
+}
+
+.input-top-elements {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.mention-btn {
+  background: var(--vscode-button-secondaryBackground, #3C3C3C);
+  color: var(--vscode-button-secondaryForeground, #CCCCCC);
+  border: 1px solid var(--vscode-button-secondaryBorder, #3C3C3C);
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.1s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mention-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #4A4A4A);
+  border-color: var(--vscode-focusBorder, #007ACC);
+}
+
+.tab-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--vscode-badge-background, #4A4A4A);
+  color: var(--vscode-badge-foreground, #FFFFFF);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.tab-indicator .codicon {
+  font-size: 12px;
 }
 
 .chat-textarea {
-  background: var(--vscode-input-background, #3C3C3C);
+  background: transparent;
   color: var(--vscode-input-foreground, #CCCCCC);
-  border: 1px solid var(--vscode-input-border, #3C3C3C);
-  border-radius: 6px;
-  padding: 12px;
+  border: none;
+  border-radius: 0;
+  padding: 8px 0;
   font-family: inherit;
   font-size: 14px;
   resize: none;
@@ -300,12 +637,12 @@ watch(inputText, resizeTextarea);
   max-height: 200px;
   width: 100%;
   box-sizing: border-box;
-  transition: border-color 0.1s ease;
+  transition: none;
 }
 
 .chat-textarea:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder, #007ACC);
+  border: none;
 }
 
 .chat-textarea::placeholder {
@@ -313,92 +650,103 @@ watch(inputText, resizeTextarea);
 }
 
 /* Input Controls */
-.input-controls {
+.input-bottom-controls {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vscode-panel-border, #3C3C3C);
 }
 
-.agent-selector {
+.left-controls {
   display: flex;
   align-items: center;
   gap: 8px;
+  position: relative;
+}
+
+.agent-btn {
+  background: var(--vscode-button-secondaryBackground, #3C3C3C);
+  color: var(--vscode-button-secondaryForeground, #CCCCCC);
+  border: 1px solid var(--vscode-button-secondaryBorder, #3C3C3C);
+  border-radius: 4px;
   padding: 6px 12px;
-  background: var(--vscode-dropdown-background, #3C3C3C);
-  border: 1px solid var(--vscode-dropdown-border, #3C3C3C);
-  border-radius: 4px;
-  cursor: pointer;
-  transition: border-color 0.1s ease;
-  min-width: 200px;
-}
-
-.agent-selector:hover {
-  border-color: var(--vscode-focusBorder, #007ACC);
-}
-
-.agent-label {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground, #8C8C8C);
-}
-
-.agent-model {
-  font-size: 12px;
-  color: var(--vscode-foreground, #CCCCCC);
-  font-weight: 500;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.tool-btn, .voice-btn, .send-btn, .new-chat-btn {
-  background: transparent;
-  color: var(--vscode-foreground, #CCCCCC);
-  border: 1px solid var(--vscode-panel-border, #3C3C3C);
-  border-radius: 4px;
-  padding: 6px 8px;
   cursor: pointer;
   font-size: 12px;
   transition: all 0.1s ease;
   display: flex;
   align-items: center;
-  justify-content: center;
-  min-width: 32px;
-  min-height: 32px;
+  gap: 6px;
+  position: relative;
 }
 
-.tool-btn:hover, .voice-btn:hover, .new-chat-btn:hover {
-  background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+.agent-btn:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #4A4A4A);
   border-color: var(--vscode-focusBorder, #007ACC);
 }
 
-.send-btn {
+.agent-btn.agent-changed {
   background: var(--vscode-button-background, #0E639C);
   color: var(--vscode-button-foreground, #FFFFFF);
   border-color: var(--vscode-button-background, #0E639C);
+  animation: agentChangePulse 1s ease-in-out;
 }
 
-.send-btn:hover {
+@keyframes agentChangePulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.right-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+
+
+.floating-send-btn {
+  background: var(--vscode-button-background, #0E639C);
+  color: var(--vscode-button-foreground, #FFFFFF);
+  border: 1px solid var(--vscode-button-background, #0E639C);
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.1s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+}
+
+.floating-send-btn:hover {
   background: var(--vscode-button-hoverBackground, #1177BB);
   border-color: var(--vscode-button-hoverBackground, #1177BB);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
 }
 
-.send-btn:disabled {
+.floating-send-btn:disabled {
   background: var(--vscode-button-secondaryBackground, #3C3C3C);
   color: var(--vscode-button-secondaryForeground, #8C8C8C);
   border-color: var(--vscode-button-secondaryBorder, #3C3C3C);
   cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.floating-send-btn .codicon {
+  font-size: 18px;
 }
 
 /* Agent Dropdown */
 .agent-dropdown {
   position: absolute;
-  bottom: 100%;
-  left: 16px;
-  right: 16px;
+  /* Remove default positioning - will be set by JavaScript */
   background: var(--vscode-dropdown-background, #3C3C3C);
   border: 1px solid var(--vscode-dropdown-border, #3C3C3C);
   border-radius: 4px;
@@ -406,6 +754,21 @@ watch(inputText, resizeTextarea);
   z-index: 1000;
   max-height: 200px;
   overflow-y: auto;
+  min-width: 200px;
+  white-space: nowrap;
+  /* Support for dynamic positioning */
+  transition: none;
+  /* Start hidden but ready for positioning */
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Ensure dropdown stays on screen */
+@media (max-width: 768px) {
+  .agent-dropdown {
+    left: auto;
+    right: 0;
+  }
 }
 
 .agent-option {
@@ -419,6 +782,21 @@ watch(inputText, resizeTextarea);
 
 .agent-option:hover {
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.1));
+}
+
+.agent-option.selected {
+  background: var(--vscode-list-activeSelectionBackground, #4A4A4A);
+  color: var(--vscode-list-activeSelectionForeground, #FFFFFF);
+}
+
+.agent-option.selected:hover {
+  background: var(--vscode-list-activeSelectionBackground, #5A5A5A);
+}
+
+.agent-option .codicon-check {
+  color: var(--vscode-list-activeSelectionForeground, #FFFFFF);
+  font-size: 12px;
+  margin-left: auto;
 }
 
 .agent-name {

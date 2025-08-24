@@ -88,19 +88,44 @@ const selectedAgentId = ref<string>('');
 
 // Initialize with VS Code data
 onMounted(() => {
-  // Get initialization data from VS Code
-  if (window.vscodeInitData) {
-    const initData = window.vscodeInitData;
-    selectedAgentId.value = initData.providerId;
+  console.log('App.vue - onMounted called');
+  
+  // Function to initialize the app with data
+  const initializeApp = (initData: any) => {
+    console.log('App.vue - initializing with data:', initData);
     
     // Convert available models to agents format
-    if (initData.availableProviderModels) {
+    if (initData.availableProviderModels && initData.availableProviderModels.length > 0) {
       availableAgents.value = initData.availableProviderModels.map((model: any) => ({
-        id: model.model,
+        id: `${model.provider}:${model.model}`, // Create unique ID combining provider and model
         name: model.provider === 'ollama' ? 'Ollama' : 'vLLM',
         version: model.model,
         provider: model.provider
       }));
+      
+      // Set the selected agent ID to the current provider:model combination
+      selectedAgentId.value = `${initData.providerId}:${initData.model}`;
+      console.log('App.vue - Using configured agents:', availableAgents.value);
+    } else {
+      // Fallback agents if none are configured
+      availableAgents.value = [
+        {
+          id: 'ollama:qwen2.5-coder:7b',
+          name: 'Ollama',
+          version: 'qwen2.5-coder:7b',
+          provider: 'ollama'
+        },
+        {
+          id: 'vllm:qwen2.5-coder:7b',
+          name: 'vLLM',
+          version: 'qwen2.5-coder:7b',
+          provider: 'vllm'
+        }
+      ];
+      
+      // Set default selected agent
+      selectedAgentId.value = 'ollama:qwen2.5-coder:7b';
+      console.log('App.vue - Using fallback agents:', availableAgents.value);
     }
     
     // Set context files from candidates
@@ -111,6 +136,43 @@ onMounted(() => {
         name: candidate.label.split('/').pop() || candidate.label
       }));
     }
+    
+    console.log('App.vue - Final state - availableAgents:', availableAgents.value);
+    console.log('App.vue - Final state - selectedAgentId:', selectedAgentId.value);
+  };
+  
+  // Check if data is immediately available
+  if (window.vscodeInitData) {
+    console.log('App.vue - vscodeInitData immediately available:', window.vscodeInitData);
+    initializeApp(window.vscodeInitData);
+  } else {
+    console.log('App.vue - vscodeInitData not immediately available, waiting...');
+    
+    // Wait for the data to become available (with timeout)
+    let attempts = 0;
+    const maxAttempts = 50; // 5 seconds max wait
+    
+    const waitForData = () => {
+      attempts++;
+      if (window.vscodeInitData) {
+        console.log('App.vue - vscodeInitData received after waiting:', window.vscodeInitData);
+        initializeApp(window.vscodeInitData);
+      } else if (attempts < maxAttempts) {
+        console.log(`App.vue - Waiting for vscodeInitData... attempt ${attempts}/${maxAttempts}`);
+        setTimeout(waitForData, 100);
+      } else {
+        console.error('App.vue - vscodeInitData never received, using fallback');
+        // Use fallback data
+        initializeApp({
+          providerId: 'ollama',
+          model: 'qwen2.5-coder:7b',
+          availableProviderModels: [],
+          candidates: []
+        });
+      }
+    };
+    
+    waitForData();
   }
   
   // Listen for messages from VS Code
@@ -165,7 +227,19 @@ const handleVSCodeMessage = (message: any) => {
         text: message.text,
         timestamp: new Date()
       };
-      messages.value.push(aiMessage);
+      
+      // If this is a retry or regenerate, replace the existing message
+      if (message.retryFor || message.regenerateFor) {
+        const targetId = message.retryFor || message.regenerateFor;
+        const existingIndex = messages.value.findIndex(m => m.id === targetId);
+        if (existingIndex !== -1) {
+          messages.value[existingIndex] = aiMessage;
+        } else {
+          messages.value.push(aiMessage);
+        }
+      } else {
+        messages.value.push(aiMessage);
+      }
       break;
       
     case 'error':
@@ -186,7 +260,17 @@ const handleVSCodeMessage = (message: any) => {
       break;
       
     case 'updateProviderModel':
-      selectedAgentId.value = message.model;
+      console.log('App.vue - updateProviderModel received:', message);
+      console.log('App.vue - Previous selectedAgentId:', selectedAgentId.value);
+      selectedAgentId.value = `${message.provider}:${message.model}`;
+      console.log('App.vue - New selectedAgentId:', selectedAgentId.value);
+      
+      // Show notification of model change
+      postMessage({ 
+        type: 'log', 
+        level: 'info', 
+        message: `Switched to ${message.provider} model: ${message.model}` 
+      });
       break;
       
     case 'contextFiles':
