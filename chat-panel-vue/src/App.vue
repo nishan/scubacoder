@@ -160,7 +160,7 @@ onMounted(() => {
 });
 
 // Message handling
-const handleSendMessage = (text: string) => {
+const handleSendMessage = (text: string, streaming: boolean = true) => {
   if (!text.trim()) return;
   
   // Add user message
@@ -181,7 +181,8 @@ const handleSendMessage = (text: string) => {
   postMessage({
     type: 'chat',
     text: text.trim(),
-    contextUris: contextFiles.value.map(f => f.path)
+    contextUris: contextFiles.value.map(f => f.path),
+    streaming: streaming
   });
 };
 
@@ -202,6 +203,7 @@ const handleSelectAgent = (agent: Agent) => {
 };
 
 const handleVSCodeMessage = (message: any) => {
+  console.log('App.vue received message:', message); // Debug logging
   switch (message.type) {
     case 'reply':
       isLoading.value = false;
@@ -241,6 +243,41 @@ const handleVSCodeMessage = (message: any) => {
       
     case 'loading':
       isLoading.value = true;
+      break;
+      
+    case 'streamingStart':
+      console.log('App.vue: streamingStart received with messageId:', message.messageId); // Debug logging
+      isLoading.value = false;
+      // Create a placeholder message for streaming
+      const streamingMessage: Message = {
+        id: message.messageId || Date.now().toString(),
+        role: 'assistant',
+        text: '',
+        timestamp: new Date()
+      };
+      messages.value.push(streamingMessage);
+      console.log('App.vue: Added streaming message with id:', streamingMessage.id); // Debug logging
+      break;
+      
+    case 'streamingChunk':
+      console.log('App.vue: streamingChunk received for messageId:', message.messageId, 'chunk:', message.chunk); // Debug logging
+      // Update the streaming message with new chunks
+      const chunkMessageIndex = messages.value.findIndex(m => m.id === message.messageId);
+      console.log('App.vue: Found message at index:', chunkMessageIndex); // Debug logging
+      if (chunkMessageIndex !== -1) {
+        messages.value[chunkMessageIndex].text += message.chunk;
+        console.log('App.vue: Updated message text to:', messages.value[chunkMessageIndex].text); // Debug logging
+      } else {
+        console.warn('App.vue: Could not find streaming message with id:', message.messageId); // Debug logging
+      }
+      break;
+      
+    case 'streamingComplete':
+      // Finalize the streaming message
+      const completeMessageIndex = messages.value.findIndex(m => m.id === message.messageId);
+      if (completeMessageIndex !== -1) {
+        messages.value[completeMessageIndex].text = message.fullText || messages.value[completeMessageIndex].text;
+      }
       break;
       
     case 'updateProviderModel':

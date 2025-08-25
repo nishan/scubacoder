@@ -126,7 +126,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<{
-  send: [text: string];
+  send: [text: string, streaming: boolean];
   newChat: [];
   addContext: [];
   selectAgent: [agent: Agent];
@@ -156,7 +156,7 @@ const getFileIcon = (type: string) => {
 
 const sendMessage = () => {
   if (inputText.value.trim()) {
-    emit('send', inputText.value.trim());
+    emit('send', inputText.value.trim(), true); // Always enable streaming
     inputText.value = '';
     nextTick(() => {
       textareaRef.value?.focus();

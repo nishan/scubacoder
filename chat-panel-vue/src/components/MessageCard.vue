@@ -149,16 +149,31 @@ const insertCode = (code: string) => {
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
 }
 
+/* Align user messages to the right */
+.user-message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+/* Align AI messages to the left */
+.ai-message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 /* User Message Styles */
 .user-message .message-bubble {
-  background: var(--vscode-button-background, #0E639C);
-  color: var(--vscode-button-foreground, #FFFFFF);
+  background: #2D3748; /* Dark blue-grey background */
+  color: #FFFFFF; /* White text */
   padding: 12px 16px;
   border-radius: 12px;
   max-width: 80%;
   word-wrap: break-word;
   font-size: 14px;
   line-height: 1.4;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .file-reference {
@@ -237,14 +252,15 @@ const insertCode = (code: string) => {
 
 /* AI Message Styles */
 .ai-message {
-  background: var(--vscode-editor-background, #1E1E1E);
-  border: 1px solid var(--vscode-panel-border, #3C3C3C);
-  border-radius: 8px;
+  background: #374151; /* Slightly lighter grey for AI messages */
+  border: none;
+  border-radius: 12px;
   padding: 16px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .message-content {
-  color: var(--vscode-foreground, #CCCCCC);
+  color: #FFFFFF; /* White text for better contrast on dark background */
   font-size: 14px;
   line-height: 1.5;
   margin-bottom: 12px;

@@ -150,6 +150,10 @@ export class OllamaProvider implements LLMProvider {
       const reader = res.body as unknown as Readable;
       let buffer = '';
       
+      console.log('Response body type:', typeof res.body);
+      console.log('Response body constructor:', res.body?.constructor?.name);
+      console.log('Response body readable:', res.body?.readable);
+      
       for await (const chunk of reader) {
         buffer += chunk.toString('utf8');
         const lines = buffer.split(/\r?\n/);
@@ -247,10 +251,11 @@ export class OllamaProvider implements LLMProvider {
           temperature: req.temperature,
           num_predict: req.maxTokens,
           top_k: 40,
-          top_p: 0.9,
-          repeat_penalty: 1.1
+          top_p: 0.9
         }
       };
+      
+      console.log('Ollama streaming request body:', JSON.stringify(body, null, 2));
       
       const res = await fetch(url, { 
         method: 'POST', 
@@ -258,13 +263,15 @@ export class OllamaProvider implements LLMProvider {
         headers: { 'Content-Type': 'application/json' }
       });
       
+      console.log('Ollama streaming response status:', res.status, res.statusText);
+      console.log('Ollama streaming response headers:', Object.fromEntries(res.headers.entries()));
+      
       if (!res.ok || !res.body) {
         throw new Error(`Ollama chat stream error: ${res.status} ${res.statusText}`);
       }
 
       const reader = res.body as unknown as Readable;
       let buffer = '';
-      let last = '';
 
       for await (const chunk of reader) {
         buffer += chunk.toString('utf8');
@@ -275,16 +282,19 @@ export class OllamaProvider implements LLMProvider {
           if (!line.trim()) continue;
           try {
             const obj = JSON.parse(line);
-            if (typeof obj.response === 'string') {
-              yield obj.response;
-              last += obj.response;
-            } else if (obj.message && typeof obj.message.content === 'string') {
-              const cur: string = obj.message.content;
-              const delta = cur.slice(last.length);
-              if (delta) yield delta;
-              last = cur;
+            console.log('Ollama streaming chunk:', obj); // Debug logging
+            
+            // Handle streaming chat response format
+            if (typeof obj.message.content === 'string') {
+              console.log('Yielding response chunk:', obj.message.content); // Debug logging
+              yield obj.message.content;
             }
-            if (obj.done) return;
+            
+            // Check if stream is done
+            if (obj.done) {
+              console.log('Stream done, returning'); // Debug logging
+              return;
+            }
           } catch (parseError) {
             console.warn('Failed to parse Ollama chat stream line:', line, parseError);
           }
@@ -297,10 +307,6 @@ export class OllamaProvider implements LLMProvider {
           const obj = JSON.parse(buffer);
           if (typeof obj.response === 'string') {
             yield obj.response;
-          } else if (obj.message && typeof obj.message.content === 'string') {
-            const cur: string = obj.message.content;
-            const delta = cur.slice(last.length);
-            if (delta) yield delta;
           }
         } catch (parseError) {
           console.warn('Failed to parse final chat buffer:', buffer, parseError);

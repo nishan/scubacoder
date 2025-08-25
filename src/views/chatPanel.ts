@@ -89,6 +89,7 @@ export class ChatPanel {
             const maxTokens = 2048; // Increased for better responses
             const temperature = 0.3;
             const contextUris: string[] = Array.isArray(msg.contextUris) ? msg.contextUris : [];
+            const useStreaming = msg.streaming ?? false; // Check if streaming is requested
 
             info('Sending loading to webview');
             // Show loading indicator
@@ -116,26 +117,35 @@ export class ChatPanel {
                 ? `You are a careful coding assistant. You have access to the following files:\n\n${contextContent}\n\nPrefer short, accurate answers. Return code in triple backticks. Use the file context to provide more relevant responses.`
                 : 'You are a careful coding assistant. Prefer short, accurate answers. Return code in triple backticks.';
               
-              const res = await this.provider.chat({
-                messages: [
-                  { role: 'system', content: systemPrompt }, 
-                  { role: 'user', content: text }
-                ],
-                maxTokens,
-                temperature
-              });
+              info(`Streaming requested: ${useStreaming}, Provider: ${this.provider.id}`);
+              if (useStreaming && this.provider.id === 'ollama') {
+                info('Using streaming chat path');
+                // Use streaming chat
+                await this.handleStreamingChat(text, contextUris, systemPrompt, maxTokens, temperature);
+              } else {
+                info('Using regular chat path');
+                // Use regular chat
+                const res = await this.provider.chat({
+                  messages: [
+                    { role: 'system', content: systemPrompt }, 
+                    { role: 'user', content: text }
+                  ],
+                  maxTokens,
+                  temperature
+                });
 
-              info('Got response from provider:', res);
-              this.audit.record({ 
-                kind: 'chat', 
-                model: this.provider.id, 
-                promptPreview: text.slice(0, 200), 
-                files: contextUris, 
-                timestamp: new Date().toISOString() 
-              });
+                info('Got response from provider:', res);
+                this.audit.record({ 
+                  kind: 'chat', 
+                  model: this.provider.id, 
+                  promptPreview: text.slice(0, 200), 
+                  files: contextUris, 
+                  timestamp: new Date().toISOString() 
+                });
 
-              info('Sending reply to webview');
-              this.panel.webview.postMessage({ type: 'reply', text: res.text });
+                info('Sending reply to webview');
+                this.panel.webview.postMessage({ type: 'reply', text: res.text });
+              }
             } catch (error) {
               warn('Error in provider.chat:', error);
               this.panel.webview.postMessage({ 
@@ -473,6 +483,107 @@ export class ChatPanel {
       }
     } catch (error) {
       warn('Initial connection test failed:', error);
+    }
+  }
+
+  /**
+   * Handle streaming chat responses from Ollama
+   */
+  private async handleStreamingChat(
+    userText: string, 
+    contextUris: string[], 
+    systemPrompt: string, 
+    maxTokens: number, 
+    temperature: number
+  ) {
+    try {
+      info('Starting streaming chat');
+      info('Provider object:', this.provider);
+      info('Provider ID:', this.provider.id);
+      info('Provider methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(this.provider)));
+      
+      // Generate messageId first
+      const messageId = Date.now().toString();
+      
+      // Send streaming start message with messageId
+      this.panel.webview.postMessage({ 
+        type: 'streamingStart',
+        messageId: messageId
+      });
+      
+      // Create chat request
+      const chatRequest = {
+        messages: [
+          { role: 'system', content: systemPrompt }, 
+          { role: 'user', content: userText }
+        ],
+        maxTokens,
+        temperature
+      };
+      
+      // Get streaming response from Ollama
+      let fullResponse = '';
+      let chunkCount = 0;
+      
+      info('Starting to iterate over chatStream');
+      
+      // Test if chatStream method exists
+      if (!(this.provider as any).chatStream) {
+        throw new Error('chatStream method not found on provider');
+      }
+      
+      info('chatStream method found, starting iteration');
+      
+      try {
+        info('About to call chatStream method');
+        const stream = (this.provider as any).chatStream(chatRequest);
+        info('chatStream method called, got stream object:', stream);
+        
+        for await (const chunk of stream) {
+          chunkCount++;
+          fullResponse += chunk;
+          info(`Received chunk ${chunkCount}: "${chunk}"`);
+          
+          // Send streaming chunk to frontend
+          this.panel.webview.postMessage({ 
+            type: 'streamingChunk', 
+            chunk, 
+            messageId 
+          });
+          info(`Sent streamingChunk to webview: ${chunk}`);
+        }
+      } catch (iterationError) {
+        info('Error during iteration:', iterationError);
+        throw iterationError;
+      }
+      info(`Streaming completed. Total chunks: ${chunkCount}, Full response length: ${fullResponse.length}`);
+      
+      // Send streaming complete message
+      this.panel.webview.postMessage({ 
+        type: 'streamingComplete', 
+        messageId,
+        fullText: fullResponse 
+      });
+      
+      // Record in audit log
+      this.audit.record({ 
+        kind: 'chat', 
+        model: this.provider.id, 
+        promptPreview: userText.slice(0, 200), 
+        files: contextUris, 
+        timestamp: new Date().toISOString() 
+      });
+      
+      info('Streaming chat completed');
+      
+    } catch (error) {
+      warn('Error in streaming chat:', error);
+      this.panel.webview.postMessage({ 
+        type: 'error', 
+        text: `Streaming chat failed: ${error}`,
+        reason: String(error),
+        canRetry: true
+      });
     }
   }
 

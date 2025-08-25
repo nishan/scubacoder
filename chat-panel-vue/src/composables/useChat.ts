@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import type { Message, ContextFile, ProviderModel } from '../types';
+import type { Message, ContextFile } from '../types';
 import { useVSCode } from './useVSCode';
 
 export function useChat() {
@@ -9,11 +9,13 @@ export function useChat() {
   const messages = ref<Message[]>([]);
   const selectedContextUris = ref<string[]>([]);
   const availableContextFiles = ref<ContextFile[]>([]);
-  const availableProviderModels = ref<ProviderModel[]>([]);
+  const availableProviderModels = ref<any[]>([]);
   const currentProvider = ref('');
   const currentModel = ref('');
   const isLoading = ref(false);
   const inputText = ref('');
+  const streamingMessageId = ref<string | null>(null);
+  const streamingContent = ref<string>('');
 
   // Computed
   const hasSelectedContext = computed(() => selectedContextUris.value.length > 0);
@@ -24,13 +26,13 @@ export function useChat() {
     messages.value = [{
       id: 'welcome',
       role: 'assistant',
-      content: 'Ask a question about your codebase. Use the context pills below to include files. For example: `How do I open the chat panel?`',
+      text: 'Ask a question about your codebase. Use the context pills below to include files. For example: `How do I open the chat panel?`',
       timestamp: new Date()
     }];
   };
 
   // Send a chat message
-  const sendMessage = () => {
+  const sendMessage = (useStreaming: boolean = false) => {
     const text = inputText.value.trim();
     if (!text) return;
 
@@ -38,9 +40,8 @@ export function useChat() {
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: text,
-      timestamp: new Date(),
-      contextUris: selectedContextUris.value
+      text: text,
+      timestamp: new Date()
     };
     
     messages.value.push(userMessage);
@@ -50,7 +51,8 @@ export function useChat() {
     postMessage({
       type: 'chat',
       text,
-      contextUris: selectedContextUris.value
+      contextUris: selectedContextUris.value,
+      streaming: useStreaming
     });
   };
 
@@ -65,18 +67,56 @@ export function useChat() {
         isLoading.value = true;
         break;
         
-      case 'reply':
-        isLoading.value = false;
-        const assistantMessage: Message = {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: message.text,
-          timestamp: new Date()
-        };
-        messages.value.push(assistantMessage);
-        break;
+                      case 'reply':
+          isLoading.value = false;
+          const assistantMessage: Message = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            text: message.text,
+            timestamp: new Date()
+          };
+          messages.value.push(assistantMessage);
+          break;
         
-      case 'updateProviderModel':
+        case 'streamingStart':
+          isLoading.value = false;
+          const messageId = message.messageId || Date.now().toString();
+          streamingMessageId.value = messageId;
+          streamingContent.value = '';
+          // Add a placeholder message for streaming
+          const streamingMessage: Message = {
+            id: messageId,
+            role: 'assistant',
+            text: '',
+            timestamp: new Date()
+          };
+          messages.value.push(streamingMessage);
+          break;
+        
+        case 'streamingChunk':
+          if (streamingMessageId.value === message.messageId) {
+            streamingContent.value += message.chunk;
+            // Update the streaming message in real-time
+            const messageIndex = messages.value.findIndex(m => m.id === streamingMessageId.value);
+            if (messageIndex !== -1) {
+              messages.value[messageIndex].text = streamingContent.value;
+            }
+          }
+          break;
+        
+        case 'streamingComplete':
+          if (streamingMessageId.value === message.messageId) {
+            // Finalize the streaming message
+            const messageIndex = messages.value.findIndex(m => m.id === streamingMessageId.value);
+            if (messageIndex !== -1) {
+              messages.value[messageIndex].text = message.fullText || streamingContent.value;
+            }
+            streamingMessageId.value = null;
+            streamingContent.value = '';
+          }
+          break;
+        
+        case 'updateProviderModel':
         if (message.provider) currentProvider.value = message.provider;
         if (message.model) currentModel.value = message.model;
         break;
@@ -105,6 +145,8 @@ export function useChat() {
       model
     });
   };
+
+
 
   // Insert code into active editor
   const insertCode = (code: string) => {
@@ -145,6 +187,8 @@ export function useChat() {
     currentModel,
     isLoading,
     inputText,
+    streamingMessageId,
+    streamingContent,
     
     // Computed
     hasSelectedContext,
