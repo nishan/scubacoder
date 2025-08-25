@@ -1,0 +1,229 @@
+# Ollama REST API — VS Code REST Client / IntelliJ .http
+# Update these variables as needed.
+@baseUrl = http://localhost:11434
+@model = qwen3:1.7b
+@ns_model = yourname/my-model:latest
+
+###
+# @name ListLocalModels
+GET {{baseUrl}}/api/tags
+Accept: application/json
+
+###
+# @name ListRunningModels
+GET {{baseUrl}}/api/ps
+Accept: application/json
+
+###
+# @name ShowModelInfo
+POST {{baseUrl}}/api/show
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "{{model}}",
+  "verbose": true
+}
+
+###
+# @name PullModel
+POST {{baseUrl}}/api/pull
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "{{model}}"
+  // , "stream": false
+  // , "insecure": false
+}
+
+###
+# @name PushModel
+# Requires login + public key on ollama.ai
+POST {{baseUrl}}/api/push
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "{{ns_model}}"
+  // , "stream": false
+  // , "insecure": false
+}
+
+###
+# @name CreateModel_fromModelfile
+POST {{baseUrl}}/api/create
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "demo-mario",
+  "modelfile": "FROM {{model}}\\nSYSTEM You are Mario from Super Mario Bros."
+  // , "stream": false
+  // , "quantize": "q4_K_M"
+}
+
+###
+# @name CopyModel
+POST {{baseUrl}}/api/copy
+Content-Type: application/json
+Accept: application/json
+
+{
+  "source": "{{model}}",
+  "destination": "backup-{{model}}"
+}
+
+###
+# @name DeleteModel
+DELETE {{baseUrl}}/api/delete
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "{{model}}"
+}
+
+###
+# @name CheckBlobExists
+# Replace the digest below with your expected SHA256
+HEAD {{baseUrl}}/api/blobs/sha256:YOUR_DIGEST_HERE
+
+###
+# @name CreateBlobFromFile
+# Upload a file as a blob; adjust path to a real file.
+POST {{baseUrl}}/api/blobs/sha256:YOUR_DIGEST_HERE
+Content-Type: application/octet-stream
+
+< ./path/to/your/model.bin
+
+###
+# @name Generate_streaming
+POST {{baseUrl}}/api/generate
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "{{model}}",
+  "prompt": "Write a short limerick about databases."
+  // , "system": "You are a helpful assistant"
+  // , "options": { "temperature": 0.7 }
+  // , "keep_alive": "5m"
+}
+
+###
+# @name Generate_no_stream
+POST {{baseUrl}}/api/generate
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "{{model}}",
+  "prompt": "Explain ACID transactions in one paragraph.",
+  "stream": false
+}
+
+###
+# @name Generate_JSON_mode
+POST {{baseUrl}}/api/generate
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "{{model}}",
+  "prompt": "Return a JSON object with keys title and bullets (array of strings). Respond ONLY with JSON.",
+  "format": "json",
+  "stream": false
+}
+
+###
+# @name Chat_streaming
+POST {{baseUrl}}/api/chat
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "{{model}}",
+  "messages": [
+    { "role": "user", "content": "Why is the sky blue?" }
+  ]
+}
+
+###
+# @name Chat_no_stream
+POST {{baseUrl}}/api/chat
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "{{model}}",
+  "messages": [
+    { "role": "system", "content": "You are concise." },
+    { "role": "user", "content": "Give me three facts about the Pacific Northwest." }
+  ],
+  "stream": false
+}
+
+###
+# @name Chat_with_history
+POST {{baseUrl}}/api/chat
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "{{model}}",
+  "messages": [
+    { "role": "user", "content": "What is Rayleigh scattering?" },
+    { "role": "assistant", "content": "Rayleigh scattering is ..." },
+    { "role": "user", "content": "How is it different from Mie scattering?" }
+  ],
+  "stream": false
+}
+
+###
+# @name Embed (preferred)
+POST {{baseUrl}}/api/embed
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "all-minilm",
+  "input": ["Why is the sky blue?", "Why is the grass green?"]
+  // , "truncate": true
+  // , "options": {}
+  // , "keep_alive": "5m"
+}
+
+###
+# @name Embeddings_legacy (superseded by /api/embed)
+POST {{baseUrl}}/api/embeddings
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "all-minilm",
+  "prompt": "Here is an article about llamas..."
+}
+
+###
+# @name LoadModel (via chat with empty messages)
+POST {{baseUrl}}/api/chat
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "{{model}}",
+  "messages": []
+}
+
+###
+# @name UnloadModel (via keep_alive 0)
+POST {{baseUrl}}/api/chat
+Content-Type: application/json
+Accept: application/json
+
+{
+  "model": "{{model}}",
+  "messages": [],
+  "keep_alive": 0
+}

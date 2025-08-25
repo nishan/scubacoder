@@ -13,8 +13,9 @@ export interface ProviderConfig {
 export function getProvider(cfg: vscode.WorkspaceConfiguration): LLMProvider {
   const provider = cfg.get<string>('provider', 'ollama');
   const model = cfg.get<string>('ollama.model', 'qwen2.5-coder:7b');
+  const baseUrl = cfg.get<string>('ollama.baseUrl', 'http://127.0.0.1:11434');
 
-  return createProvider({ provider, model, baseUrl: undefined });
+  return createProvider({ provider, model, baseUrl });
 }
 
 export function createProvider(config: ProviderConfig): LLMProvider {

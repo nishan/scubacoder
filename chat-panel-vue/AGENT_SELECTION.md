@@ -21,9 +21,9 @@ Each persisted selection includes:
 
 ```typescript
 {
-  agentId: "ollama:qwen2.5-coder:7b",
+  agentId: "ollama##qwen2.5-coder:7b",
   timestamp: 1703123456789,
-  availableAgents: ["ollama:qwen2.5-coder:7b", "vllm:qwen2.5-coder:7b"]
+  availableAgents: ["ollama##qwen2.5-coder:7b", "vllm##qwen2.5-coder:7b"]
 }
 ```
 

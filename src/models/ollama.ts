@@ -12,14 +12,27 @@ export class OllamaProvider implements LLMProvider {
   constructor(private opts: OllamaOpts) {}
 
   /**
+   * Build consistent API URLs by properly handling baseUrl formatting
+   */
+  private buildApiUrl(endpoint: string): string {
+    const baseUrl = this.opts.baseUrl.trim();
+    // Remove trailing slash if present, then add endpoint
+    const url = `${baseUrl.replace(/\/$/, '')}${endpoint}`;
+    console.log(`Ollama API URL constructed: ${url}`);
+    return url;
+  }
+
+  /**
    * Test connection to Ollama server
    */
   async testConnection(): Promise<boolean> {
     try {
-      const url = `${this.opts.baseUrl.replace(/\/$/, '')}/api/tags`;
+      const url = this.buildApiUrl('/api/tags');
+      console.log(`Testing Ollama connection to: ${url}`);
       const res = await fetch(url, { 
         method: 'GET'
       });
+      console.log(`Ollama connection test response: ${res.status} ${res.statusText}`);
       return res.ok;
     } catch (error) {
       console.warn('Ollama connection test failed:', error);
@@ -32,7 +45,7 @@ export class OllamaProvider implements LLMProvider {
    */
   async listModels(): Promise<string[]> {
     try {
-      const url = `${this.opts.baseUrl.replace(/\/$/, '')}/api/tags`;
+      const url = this.buildApiUrl('/api/tags');
       const res = await fetch(url, { 
         method: 'GET'
       });
@@ -67,7 +80,7 @@ export class OllamaProvider implements LLMProvider {
    */
   async generateText(req: GenRequest): Promise<GenResult> {
     try {
-      const url = `${this.opts.baseUrl}/api/generate`;
+      const url = this.buildApiUrl('/api/generate');
       const body = {
         model: this.opts.model,
         prompt: [req.system ? `System: ${req.system}\n\n` : '', req.prompt].join(''),
@@ -110,7 +123,7 @@ export class OllamaProvider implements LLMProvider {
    */
   async *generateTextStream(req: GenRequest): AsyncIterable<string> {
     try {
-      const url = `${this.opts.baseUrl}/api/generate`;
+      const url = this.buildApiUrl('/api/generate');
       const body = {
         model: this.opts.model,
         prompt: [req.system ? `System: ${req.system}\n\n` : '', req.prompt].join(''),
@@ -177,8 +190,8 @@ export class OllamaProvider implements LLMProvider {
    * Chat with Ollama using conversation history
    */
   async chat(req: ChatRequest): Promise<ChatResult> {
-    try {
-      const url = `${this.opts.baseUrl}/api/chat`;
+    const url = this.buildApiUrl('/api/chat');
+    try {      
       const body = { 
         model: this.opts.model, 
         stream: false, 
@@ -192,6 +205,8 @@ export class OllamaProvider implements LLMProvider {
         }
       };
       
+      console.log(`Ollama chat body: ${JSON.stringify(body)}`);
+
       const res = await fetch(url, { 
         method: 'POST', 
         body: JSON.stringify(body), 
@@ -214,7 +229,7 @@ export class OllamaProvider implements LLMProvider {
       };
     } catch (error) {
       console.error('Ollama chat failed:', error);
-      throw new Error(`Failed to chat with Ollama: ${error}`);
+      throw new Error(`Failed to chat with Ollama: ${error} in ${url}`);
     }
   }
 
@@ -223,7 +238,7 @@ export class OllamaProvider implements LLMProvider {
    */
   async *chatStream(req: ChatRequest): AsyncIterable<string> {
     try {
-      const url = `${this.opts.baseUrl}/api/chat`;
+      const url = this.buildApiUrl('/api/chat');
       const body = { 
         model: this.opts.model, 
         stream: true, 

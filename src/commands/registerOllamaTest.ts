@@ -9,6 +9,9 @@ export function registerOllamaTest(context: vscode.ExtensionContext) {
         const cfg = vscode.workspace.getConfiguration('scubacoder');
         const provider = cfg.get<string>('provider', 'ollama');
         const model = cfg.get<string>('ollama.model', 'qwen2.5-coder:7b');
+        const baseUrl = cfg.get<string>('ollama.baseUrl', 'http://127.0.0.1:11434');
+        
+        info(`Testing Ollama with config: provider=${provider}, model=${model}, baseUrl=${baseUrl}`);
         
         if (provider !== 'ollama') {
           vscode.window.showWarningMessage('Current provider is not Ollama. Please switch to Ollama first.');
@@ -18,7 +21,7 @@ export function registerOllamaTest(context: vscode.ExtensionContext) {
         info('Testing Ollama connection...');
         vscode.window.showInformationMessage('Testing Ollama connection...');
         
-        const ollamaProvider = createProvider({ provider, model });
+        const ollamaProvider = createProvider({ provider, model, baseUrl });
         
         // Test connection
         const connectionTest = await (ollamaProvider as any).testConnection();

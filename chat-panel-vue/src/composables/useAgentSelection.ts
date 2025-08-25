@@ -3,6 +3,7 @@ import type { Agent } from '../types';
 import { useVSCode } from './useVSCode';
 
 const STORAGE_KEY = 'scubacoder-selected-agent';
+const MODEL_DELIMITER = '##';
 
 export function useAgentSelection() {
   const { postMessage, getState, setState } = useVSCode();
@@ -32,7 +33,7 @@ export function useAgentSelection() {
   const initializeAgents = (initData: any) => {
     if (initData.availableProviderModels && initData.availableProviderModels.length > 0) {
       availableAgents.value = initData.availableProviderModels.map((model: any) => ({
-        id: `${model.provider}:${model.model}`,
+        id: `${model.provider}${MODEL_DELIMITER}${model.model}`,
         name: model.provider === 'ollama' ? 'Ollama' : 'vLLM',
         version: model.model,
         provider: model.provider
@@ -41,13 +42,13 @@ export function useAgentSelection() {
       // Fallback agents if none are configured
       availableAgents.value = [
         {
-          id: 'ollama:qwen2.5-coder:7b',
+          id: 'ollama##qwen2.5-coder:7b',
           name: 'Ollama',
           version: 'qwen2.5-coder:7b',
           provider: 'ollama'
         },
         {
-          id: 'vllm:qwen2.5-coder:7b',
+          id: 'vllm##qwen2.5-coder:7b',
           name: 'vLLM',
           version: 'qwen2.5-coder:7b',
           provider: 'vllm'
@@ -147,7 +148,7 @@ export function useAgentSelection() {
     persistSelection(agentId);
     
     // Notify VS Code of the change
-    const [provider, model] = agentId.split(':');
+    const [provider, model] = agentId.split(MODEL_DELIMITER);
     if (provider && model) {
       postMessage({
         type: 'changeProviderModel',
@@ -246,7 +247,7 @@ export function useAgentSelection() {
   // Handle agent update from VS Code
   const handleAgentUpdate = (message: any) => {
     if (message.type === 'updateProviderModel' && message.provider && message.model) {
-      const newAgentId = `${message.provider}:${message.model}`;
+      const newAgentId = `${message.provider}${MODEL_DELIMITER}${message.model}`;
       if (newAgentId !== selectedAgentId.value) {
         selectedAgentId.value = newAgentId;
         persistSelection(newAgentId);
