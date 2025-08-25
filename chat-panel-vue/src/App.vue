@@ -38,9 +38,11 @@
       :current-file="currentFile"
       :available-agents="availableAgents"
       :selected-agent-id="selectedAgentId"
+      :selected-agent-display-name="selectedAgentDisplayName"
       @send="handleSendMessage"
       @new-chat="handleNewChat"
       @add-context="handleAddContext"
+      @select-agent="handleSelectAgent"
     />
   </div>
 </template>
@@ -51,6 +53,7 @@ import ChatHeader from './components/ChatHeader.vue';
 import MessageCard from './components/MessageCard.vue';
 import ChatInput from './components/ChatInput.vue';
 import { useVSCode } from './composables/useVSCode';
+import { useAgentSelection } from './composables/useAgentSelection';
 
 interface Message {
   id: string;
@@ -77,14 +80,20 @@ interface Agent {
 }
 
 const { postMessage, onMessage } = useVSCode();
+const { 
+  availableAgents, 
+  selectedAgentId, 
+  selectedAgentDisplayName,
+  initializeAgents, 
+  handleAgentUpdate,
+  selectAgent
+} = useAgentSelection();
 
 // State
 const messages = ref<Message[]>([]);
 const isLoading = ref(false);
 const contextFiles = ref<ContextFile[]>([]);
 const currentFile = ref<string>('');
-const availableAgents = ref<Agent[]>([]);
-const selectedAgentId = ref<string>('');
 
 // Initialize with VS Code data
 onMounted(() => {
@@ -94,39 +103,8 @@ onMounted(() => {
   const initializeApp = (initData: any) => {
     console.log('App.vue - initializing with data:', initData);
     
-    // Convert available models to agents format
-    if (initData.availableProviderModels && initData.availableProviderModels.length > 0) {
-      availableAgents.value = initData.availableProviderModels.map((model: any) => ({
-        id: `${model.provider}:${model.model}`, // Create unique ID combining provider and model
-        name: model.provider === 'ollama' ? 'Ollama' : 'vLLM',
-        version: model.model,
-        provider: model.provider
-      }));
-      
-      // Set the selected agent ID to the current provider:model combination
-      selectedAgentId.value = `${initData.providerId}:${initData.model}`;
-      console.log('App.vue - Using configured agents:', availableAgents.value);
-    } else {
-      // Fallback agents if none are configured
-      availableAgents.value = [
-        {
-          id: 'ollama:qwen2.5-coder:7b',
-          name: 'Ollama',
-          version: 'qwen2.5-coder:7b',
-          provider: 'ollama'
-        },
-        {
-          id: 'vllm:qwen2.5-coder:7b',
-          name: 'vLLM',
-          version: 'qwen2.5-coder:7b',
-          provider: 'vllm'
-        }
-      ];
-      
-      // Set default selected agent
-      selectedAgentId.value = 'ollama:qwen2.5-coder:7b';
-      console.log('App.vue - Using fallback agents:', availableAgents.value);
-    }
+    // Initialize agents using the composable
+    initializeAgents(initData);
     
     // Set context files from candidates
     if (initData.candidates) {
@@ -217,6 +195,12 @@ const handleAddContext = () => {
   postMessage({ type: 'addContext' });
 };
 
+const handleSelectAgent = (agent: Agent) => {
+  console.log('App.vue - handleSelectAgent called with:', agent);
+  // Use the composable to select the agent
+  selectAgent(agent);
+};
+
 const handleVSCodeMessage = (message: any) => {
   switch (message.type) {
     case 'reply':
@@ -261,9 +245,8 @@ const handleVSCodeMessage = (message: any) => {
       
     case 'updateProviderModel':
       console.log('App.vue - updateProviderModel received:', message);
-      console.log('App.vue - Previous selectedAgentId:', selectedAgentId.value);
-      selectedAgentId.value = `${message.provider}:${message.model}`;
-      console.log('App.vue - New selectedAgentId:', selectedAgentId.value);
+      // Handle agent update using the composable
+      handleAgentUpdate(message);
       
       // Show notification of model change
       postMessage({ 

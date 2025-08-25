@@ -11,113 +11,302 @@ export class OllamaProvider implements LLMProvider {
 
   constructor(private opts: OllamaOpts) {}
 
+  /**
+   * Test connection to Ollama server
+   */
+  async testConnection(): Promise<boolean> {
+    try {
+      const url = `${this.opts.baseUrl.replace(/\/$/, '')}/api/tags`;
+      const res = await fetch(url, { 
+        method: 'GET'
+      });
+      return res.ok;
+    } catch (error) {
+      console.warn('Ollama connection test failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get available models from Ollama
+   */
   async listModels(): Promise<string[]> {
-    const url = `${this.opts.baseUrl.replace(/\/$/, '')}/api/tags`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Ollama listModels error: ${res.status} ${res.statusText}`);
-    const data = await res.json() as any;
-    return (data.models || []).map((m: any) => m.name || m.model || '').filter(Boolean);
-  }
-
-  async generateText(req: GenRequest): Promise<GenResult> {
-    const url = `${this.opts.baseUrl}/api/generate`;
-    const body = {
-      model: this.opts.model,
-      prompt: [req.system ? `System: ${req.system}\n\n` : '', req.prompt].join(''),
-      stream: false,
-      options: { temperature: req.temperature, num_predict: req.maxTokens }
-    };
-    const res = await fetch(url, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }});
-    if (!res.ok) throw new Error(`Ollama error: ${res.status} ${res.statusText}`);
-    const data = await res.json() as any;
-    return { text: data.response ?? '' };
-  }
-
-  async *generateTextStream(req: GenRequest): AsyncIterable<string> {
-    const url = `${this.opts.baseUrl}/api/generate`;
-    const body = {
-      model: this.opts.model,
-      prompt: [req.system ? `System: ${req.system}\n\n` : '', req.prompt].join(''),
-      stream: true,
-      options: { temperature: req.temperature, num_predict: req.maxTokens }
-    };
-    const res = await fetch(url, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }});
-    if (!res.ok || !res.body) throw new Error(`Ollama stream error: ${res.status} ${res.statusText}`);
-
-    const reader = res.body as unknown as Readable;
-    let buffer = '';
-    for await (const chunk of reader) {
-      buffer += chunk.toString('utf8');
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const obj = JSON.parse(line);
-          if (typeof obj.response === 'string') yield obj.response;
-          if (obj.done) return;
-        } catch {}
+    try {
+      const url = `${this.opts.baseUrl.replace(/\/$/, '')}/api/tags`;
+      const res = await fetch(url, { 
+        method: 'GET'
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Ollama listModels error: ${res.status} ${res.statusText}`);
       }
-    }
-    if (buffer.trim()) {
-      try {
-        const obj = JSON.parse(buffer);
-        if (typeof obj.response === 'string') yield obj.response;
-      } catch {}
+      
+      const data = await res.json() as any;
+      return (data.models || []).map((m: any) => m.name || m.model || '').filter(Boolean);
+    } catch (error) {
+      console.error('Failed to list Ollama models:', error);
+      throw new Error(`Failed to connect to Ollama at ${this.opts.baseUrl}: ${error}`);
     }
   }
 
-  async chat(req: ChatRequest): Promise<ChatResult> {
-    const url = `${this.opts.baseUrl}/api/chat`;
-    const body = { model: this.opts.model, stream: false, messages: req.messages };
-    const res = await fetch(url, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }});
-    if (!res.ok) throw new Error(`Ollama chat error: ${res.status} ${res.statusText}`);
-    const data = await res.json() as any;
-    const text: string = data.message?.content ?? (Array.isArray(data.messages) ? data.messages.map((m: any) => m.content).join('') : '');
-    return { text };
+  /**
+   * Check if a specific model is available
+   */
+  async isModelAvailable(modelName: string): Promise<boolean> {
+    try {
+      const models = await this.listModels();
+      return models.includes(modelName);
+    } catch (error) {
+      console.warn('Failed to check model availability:', error);
+      return false;
+    }
   }
 
-  async *chatStream(req: ChatRequest): AsyncIterable<string> {
-    const url = `${this.opts.baseUrl}/api/chat`;
-    const body = { model: this.opts.model, stream: true, messages: req.messages };
-    const res = await fetch(url, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' }});
-    if (!res.ok || !res.body) throw new Error(`Ollama chat stream error: ${res.status} ${res.statusText}`);
+  /**
+   * Generate text using Ollama
+   */
+  async generateText(req: GenRequest): Promise<GenResult> {
+    try {
+      const url = `${this.opts.baseUrl}/api/generate`;
+      const body = {
+        model: this.opts.model,
+        prompt: [req.system ? `System: ${req.system}\n\n` : '', req.prompt].join(''),
+        stream: false,
+        options: { 
+          temperature: req.temperature, 
+          num_predict: req.maxTokens,
+          top_k: 40,
+          top_p: 0.9,
+          repeat_penalty: 1.1
+        }
+      };
+      
+      const res = await fetch(url, { 
+        method: 'POST', 
+        body: JSON.stringify(body), 
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Ollama error: ${res.status} ${res.statusText}`);
+      }
+      
+      const data = await res.json() as any;
+      return { 
+        text: data.response ?? '',
+        tokens: {
+          prompt: data.prompt_eval_count,
+          completion: data.eval_count
+        }
+      };
+    } catch (error) {
+      console.error('Ollama generateText failed:', error);
+      throw new Error(`Failed to generate text with Ollama: ${error}`);
+    }
+  }
 
-    const reader = res.body as unknown as Readable;
-    let buffer = '';
-    let last = '';
+  /**
+   * Stream text generation using Ollama
+   */
+  async *generateTextStream(req: GenRequest): AsyncIterable<string> {
+    try {
+      const url = `${this.opts.baseUrl}/api/generate`;
+      const body = {
+        model: this.opts.model,
+        prompt: [req.system ? `System: ${req.system}\n\n` : '', req.prompt].join(''),
+        stream: true,
+        options: { 
+          temperature: req.temperature, 
+          num_predict: req.maxTokens,
+          top_k: 40,
+          top_p: 0.9,
+          repeat_penalty: 1.1
+        }
+      };
+      
+      const res = await fetch(url, { 
+        method: 'POST', 
+        body: JSON.stringify(body), 
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!res.ok || !res.body) {
+        throw new Error(`Ollama stream error: ${res.status} ${res.statusText}`);
+      }
 
-    for await (const chunk of reader) {
-      buffer += chunk.toString('utf8');
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        if (!line.trim()) continue;
+      const reader = res.body as unknown as Readable;
+      let buffer = '';
+      
+      for await (const chunk of reader) {
+        buffer += chunk.toString('utf8');
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() || '';
+        
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const obj = JSON.parse(line);
+            if (typeof obj.response === 'string') {
+              yield obj.response;
+            }
+            if (obj.done) return;
+          } catch (parseError) {
+            console.warn('Failed to parse Ollama stream line:', line, parseError);
+          }
+        }
+      }
+      
+      // Handle any remaining buffer
+      if (buffer.trim()) {
         try {
-          const obj = JSON.parse(line);
+          const obj = JSON.parse(buffer);
           if (typeof obj.response === 'string') {
             yield obj.response;
-            last += obj.response;
+          }
+        } catch (parseError) {
+          console.warn('Failed to parse final buffer:', buffer, parseError);
+        }
+      }
+    } catch (error) {
+      console.error('Ollama generateTextStream failed:', error);
+      throw new Error(`Failed to stream text with Ollama: ${error}`);
+    }
+  }
+
+  /**
+   * Chat with Ollama using conversation history
+   */
+  async chat(req: ChatRequest): Promise<ChatResult> {
+    try {
+      const url = `${this.opts.baseUrl}/api/chat`;
+      const body = { 
+        model: this.opts.model, 
+        stream: false, 
+        messages: req.messages,
+        options: {
+          temperature: req.temperature,
+          num_predict: req.maxTokens,
+          top_k: 40,
+          top_p: 0.9,
+          repeat_penalty: 1.1
+        }
+      };
+      
+      const res = await fetch(url, { 
+        method: 'POST', 
+        body: JSON.stringify(body), 
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Ollama chat error: ${res.status} ${res.statusText}`);
+      }
+      
+      const data = await res.json() as any;
+      const text: string = data.message?.content ?? (Array.isArray(data.messages) ? data.messages.map((m: any) => m.content).join('') : '');
+      
+      return { 
+        text,
+        tokens: {
+          prompt: data.prompt_eval_count,
+          completion: data.eval_count
+        }
+      };
+    } catch (error) {
+      console.error('Ollama chat failed:', error);
+      throw new Error(`Failed to chat with Ollama: ${error}`);
+    }
+  }
+
+  /**
+   * Stream chat responses from Ollama
+   */
+  async *chatStream(req: ChatRequest): AsyncIterable<string> {
+    try {
+      const url = `${this.opts.baseUrl}/api/chat`;
+      const body = { 
+        model: this.opts.model, 
+        stream: true, 
+        messages: req.messages,
+        options: {
+          temperature: req.temperature,
+          num_predict: req.maxTokens,
+          top_k: 40,
+          top_p: 0.9,
+          repeat_penalty: 1.1
+        }
+      };
+      
+      const res = await fetch(url, { 
+        method: 'POST', 
+        body: JSON.stringify(body), 
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (!res.ok || !res.body) {
+        throw new Error(`Ollama chat stream error: ${res.status} ${res.statusText}`);
+      }
+
+      const reader = res.body as unknown as Readable;
+      let buffer = '';
+      let last = '';
+
+      for await (const chunk of reader) {
+        buffer += chunk.toString('utf8');
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() || '';
+        
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const obj = JSON.parse(line);
+            if (typeof obj.response === 'string') {
+              yield obj.response;
+              last += obj.response;
+            } else if (obj.message && typeof obj.message.content === 'string') {
+              const cur: string = obj.message.content;
+              const delta = cur.slice(last.length);
+              if (delta) yield delta;
+              last = cur;
+            }
+            if (obj.done) return;
+          } catch (parseError) {
+            console.warn('Failed to parse Ollama chat stream line:', line, parseError);
+          }
+        }
+      }
+      
+      // Handle any remaining buffer
+      if (buffer.trim()) {
+        try {
+          const obj = JSON.parse(buffer);
+          if (typeof obj.response === 'string') {
+            yield obj.response;
           } else if (obj.message && typeof obj.message.content === 'string') {
             const cur: string = obj.message.content;
             const delta = cur.slice(last.length);
             if (delta) yield delta;
-            last = cur;
           }
-          if (obj.done) return;
-        } catch {}
-      }
-    }
-    if (buffer.trim()) {
-      try {
-        const obj = JSON.parse(buffer);
-        if (typeof obj.response === 'string') yield obj.response;
-        else if (obj.message && typeof obj.message.content === 'string') {
-          const cur: string = obj.message.content;
-          const delta = cur.slice(last.length);
-          if (delta) yield delta;
+        } catch (parseError) {
+          console.warn('Failed to parse final chat buffer:', buffer, parseError);
         }
-      } catch {}
+      }
+    } catch (error) {
+      console.error('Ollama chatStream failed:', error);
+      throw new Error(`Failed to stream chat with Ollama: ${error}`);
     }
+  }
+
+  /**
+   * Get provider information
+   */
+  getInfo() {
+    return {
+      id: this.id,
+      name: 'Ollama',
+      model: this.opts.model,
+      baseUrl: this.opts.baseUrl,
+      capabilities: this.capabilities
+    };
   }
 }

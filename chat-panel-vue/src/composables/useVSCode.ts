@@ -36,15 +36,13 @@ function safeSerialize(obj: any): any {
 }
 
 export function useVSCode() {
-  const isVSCode = ref(false);
   const messageHandlers = ref<((message: IncomingMessage) => void)[]>([]);
 
   onMounted(() => {
-    isVSCode.value = typeof window !== 'undefined' && typeof window.vscode !== 'undefined';
   });
 
   const postMessage = (message: OutgoingMessage) => {
-    if (isVSCode.value && window.vscode) {
+    if (window?.vscode) {
       try {
         // Safely serialize the message before sending
         const safeMessage = safeSerialize(message);
@@ -64,6 +62,8 @@ export function useVSCode() {
       }
     } else {
       // Development mode fallback
+      const safeMessage = safeSerialize(message);
+      window.vscode.postMessage(safeMessage);
       console.log('VSCode message (dev mode):', message);
     }
   };
@@ -85,7 +85,7 @@ export function useVSCode() {
 
   // Get VS Code state
   const getState = () => {
-    if (isVSCode.value && window.vscode) {
+    if (window.vscode) {
       return window.vscode.getState();
     }
     return null;
@@ -93,13 +93,12 @@ export function useVSCode() {
 
   // Set VS Code state
   const setState = (state: any) => {
-    if (isVSCode.value && window.vscode) {
+    if (window.vscode) {
       window.vscode.setState(state);
     }
   };
 
   return {
-    isVSCode,
     postMessage,
     onMessage,
     getState,

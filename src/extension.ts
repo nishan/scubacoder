@@ -8,6 +8,7 @@ import { registerConsentPanel } from './commands/registerConsentPanel';
 import { registerRebuildIndex } from './commands/registerRebuildIndex';
 import { registerOllamaConfig } from './commands/registerOllamaConfig';
 import { registerVllmConfig } from './commands/registerVllmConfig';
+import { registerOllamaTest } from './commands/registerOllamaTest';
 import { getProvider } from './models/providerRouter';
 import { NetworkGuard } from './net/guard';
 import { PolicyEngine } from './policy/engine';
@@ -41,6 +42,7 @@ export async function activate(context: vscode.ExtensionContext) {
   registerRebuildIndex(context, indexer);
   registerOllamaConfig(context, cfg);
   registerVllmConfig(context, cfg);
+  registerOllamaTest(context);
 
   info ("Commands registered");
   // Re-load configuration on change

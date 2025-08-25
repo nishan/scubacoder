@@ -5,6 +5,7 @@ import { LLMProvider } from '../models/types';
 import { PolicyEngine } from '../policy/engine';
 import { AuditLogger } from '../audit/logger';
 import { info, warn } from '../modules/log';
+import { createProvider, updateProviderConfig, getProviderConfig, ProviderConfig } from '../models/providerRouter';
 
 /**
  * ChatPanel: A richer chat UX with message cards, code blocks, copy/feedback buttons,
@@ -47,8 +48,7 @@ export class ChatPanel {
 
     // Initialize configuration
     const cfg = vscode.workspace.getConfiguration('scubacoder');
-    const model = cfg.get<string>('ollama.model', 'qwen2.5-coder:7b');
-    const providerId = cfg.get<string>('provider', 'ollama');
+    const currentConfig = getProviderConfig(cfg);
     const availableProviderModels = cfg.get<any[]>('availableProviderModels', []);
 
     info ("VSCode URI:", this.extUri);
@@ -63,11 +63,11 @@ export class ChatPanel {
     // Mark the current selection
     const markedModels = availableProviderModels.map((item: any) => ({
       ...item,
-      isSelected: item.provider === providerId && item.model === model
+      isSelected: item.provider === currentConfig.provider && item.model === currentConfig.model
     }));
     this.panel.webview.html = this.getHtml(nonce, { 
-      providerId, 
-      model, 
+      providerId: currentConfig.provider, 
+      model: currentConfig.model, 
       candidates: this.candidates, 
       availableProviderModels: markedModels 
     });
@@ -75,6 +75,9 @@ export class ChatPanel {
     info('Chat panel initialized with html:', this.panel.webview.html);
 
     this.panel.onDidDispose(() => (ChatPanel.current = undefined));
+
+    // Test initial connection
+    this.testInitialConnection();
 
     this.panel.webview.onDidReceiveMessage(async (msg) => {
       try {
@@ -93,6 +96,14 @@ export class ChatPanel {
 
             try {
               info('Calling provider.chat');
+              
+              // Test connection before sending message
+              if (this.provider.id === 'ollama') {
+                const connectionTest = await (this.provider as any).testConnection();
+                if (!connectionTest) {
+                  throw new Error('Failed to connect to Ollama server. Please check if Ollama is running.');
+                }
+              }
               
               // Build context from files if available
               let contextContent = '';
@@ -177,24 +188,55 @@ export class ChatPanel {
             const provider = msg.provider as string;
             const model = msg.model as string;
             
-            // Update configuration
-            const config = vscode.workspace.getConfiguration('scubacoder');
-            await config.update('provider', provider, vscode.ConfigurationTarget.Global);
-            await config.update('ollama.model', model, vscode.ConfigurationTarget.Global);
-            
-            // Update the webview with new state
-            const availableProviderModels = config.get<any[]>('availableProviderModels', []);
-            const markedModels = availableProviderModels.map(item => ({
-              ...item,
-              isSelected: item.provider === provider && item.model === model
-            }));
-            
-            // Send state update to webview
-            this.panel.webview.postMessage({ 
-              type: 'updateProviderModel',
-              provider,
-              model,
-            });
+            try {
+              // Update configuration
+              await updateProviderConfig(vscode.workspace.getConfiguration('scubacoder'), { provider, model });
+              
+              // Create new provider instance and update the reference
+              const newProvider = createProvider({ provider, model });
+              (this as any).provider = newProvider;
+              
+              // Test connection to new provider
+              if (newProvider.id === 'ollama') {
+                const connectionTest = await (newProvider as any).testConnection();
+                if (!connectionTest) {
+                  warn(`Failed to connect to Ollama at ${(newProvider as any).opts?.baseUrl || 'unknown URL'}`);
+                  this.panel.webview.postMessage({ 
+                    type: 'error', 
+                    text: `Warning: Failed to connect to Ollama server. Please check if Ollama is running.`,
+                    reason: 'Connection failed',
+                    canRetry: false
+                  });
+                } else {
+                  info(`Successfully connected to Ollama with model: ${model}`);
+                }
+              }
+              
+              // Update the webview with new state
+              const config = vscode.workspace.getConfiguration('scubacoder');
+              const availableProviderModels = config.get<any[]>('availableProviderModels', []);
+              const markedModels = availableProviderModels.map(item => ({
+                ...item,
+                isSelected: item.provider === provider && item.model === model
+              }));
+              
+              // Send state update to webview
+              this.panel.webview.postMessage({ 
+                type: 'updateProviderModel',
+                provider,
+                model,
+              });
+              
+              info(`Provider changed to ${provider} with model ${model}`);
+            } catch (error) {
+              warn('Failed to change provider/model:', error);
+              this.panel.webview.postMessage({ 
+                type: 'error', 
+                text: `Failed to change provider: ${error}`,
+                reason: String(error),
+                canRetry: true
+              });
+            }
             
             break;
           }
@@ -413,6 +455,27 @@ export class ChatPanel {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   }
 
+  private async testInitialConnection() {
+    try {
+      if (this.provider.id === 'ollama') {
+        const connectionTest = await (this.provider as any).testConnection();
+        if (!connectionTest) {
+          warn('Initial Ollama connection test failed');
+          this.panel.webview.postMessage({ 
+            type: 'error', 
+            text: 'Warning: Cannot connect to Ollama server. Please check if Ollama is running.',
+            reason: 'Initial connection failed',
+            canRetry: false
+          });
+        } else {
+          info('Initial Ollama connection test successful');
+        }
+      }
+    } catch (error) {
+      warn('Initial connection test failed:', error);
+    }
+  }
+
   private async buildContextFromFiles(uris: string[]): Promise<string> {
     const contextContent: string[] = [];
     
@@ -549,6 +612,7 @@ export class ChatPanel {
         
         <script nonce="${nonce}">
           const vscode = acquireVsCodeApi();
+          window.vscode = vscode;
           
           // Safe serialization function for postMessage
           function safeSerialize(obj) {

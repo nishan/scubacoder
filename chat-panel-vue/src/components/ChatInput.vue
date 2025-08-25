@@ -52,7 +52,7 @@
           <div class="left-controls">
             <button class="agent-btn" @click="toggleAgentSelector">
               <i class="codicon codicon-infinity"></i>
-              <span>{{ selectedAgent }}</span>
+              <span>{{ selectedAgentDisplayName }}</span>
             </button>
             
             <!-- Agent Selector Dropdown -->
@@ -61,12 +61,17 @@
                 v-for="agent in availableAgents" 
                 :key="agent.id"
                 class="agent-option"
-                :class="{ 'selected': agent.id === selectedAgentId }"
                 @click="selectAgent(agent)"
+                @keydown="handleAgentKeydown($event, agent)"
+                tabindex="0"
+                role="button"
+                :aria-label="`Select ${agent.provider} model ${agent.version}`"
               >
-                <span class="agent-name">{{ agent.name }}</span>
-                <span class="agent-version">{{ agent.version }}</span>
-                <i v-if="agent.id === selectedAgentId" class="codicon codicon-check"></i>
+                <div class="selection-indicator">
+                  <i v-if="agent.id === selectedAgentId" class="codicon codicon-check selection-check"></i>
+                </div>
+                <span class="model-name">{{ agent.version }}</span>
+                <span class="provider-name">{{ agent.provider === 'ollama' ? 'Ollama' : 'vLLM' }}</span>
               </div>
             </div>
           </div>
@@ -110,18 +115,21 @@ interface Props {
   currentFile?: string;
   availableAgents?: Agent[];
   selectedAgentId?: string;
+  selectedAgentDisplayName?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   contextFiles: () => [],
   availableAgents: () => [],
-  selectedAgentId: ''
+  selectedAgentId: '',
+  selectedAgentDisplayName: 'Select Agent'
 });
 
 const emit = defineEmits<{
   send: [text: string];
   newChat: [];
   addContext: [];
+  selectAgent: [agent: Agent];
 }>();
 
 const { postMessage } = useVSCode();
@@ -130,22 +138,7 @@ const inputText = ref('');
 const showAgentSelector = ref(false);
 const textareaRef = ref<HTMLTextAreaElement>();
 
-const selectedAgent = computed(() => {
-  console.log('ChatInput - selectedAgent computed - availableAgents:', props.availableAgents);
-  console.log('ChatInput - selectedAgent computed - selectedAgentId:', props.selectedAgentId);
-  const agent = props.availableAgents.find(a => a.id === props.selectedAgentId);
-  console.log('ChatInput - selectedAgent computed - found agent:', agent);
-  
-  if (agent) {
-    // Show a shorter, more readable version
-    const shortName = agent.provider === 'ollama' ? 'Ollama' : 'vLLM';
-    const shortModel = agent.version.length > 20 ? agent.version.substring(0, 20) + '...' : agent.version;
-    return `${shortName}: ${shortModel}`;
-  }
-  
-  // Fallback text
-  return 'Select Agent';
-});
+
 
 const getFileIcon = (type: string) => {
   switch (type) {
@@ -207,15 +200,8 @@ const toggleAgentSelector = () => {
 const selectAgent = (agent: Agent) => {
   console.log('ChatInput - selectAgent called with:', agent);
   
-  // Parse the agent ID to extract provider and model
-  const [provider, model] = agent.id.split(':');
-  console.log('ChatInput - Parsed provider:', provider, 'model:', model);
-  
-  postMessage({ 
-    type: 'changeProviderModel', 
-    provider: provider, 
-    model: model 
-  });
+  // Emit the selection to parent component
+  emit('selectAgent', agent);
   
   // Close the dropdown
   showAgentSelector.value = false;
@@ -227,6 +213,14 @@ const selectAgent = (agent: Agent) => {
     setTimeout(() => {
       agentBtn.classList.remove('agent-changed');
     }, 1000);
+  }
+};
+
+// Handle keyboard navigation in agent selector
+const handleAgentKeydown = (event: KeyboardEvent, agent: Agent) => {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    selectAgent(agent);
   }
 };
 
@@ -422,7 +416,7 @@ const positionDropdown = () => {
   } else {
     // Center on button
     horizontalPosition = 'center';
-    dropdown.style.left = '50%';
+    dropdown.style.left = '70%';
     dropdown.style.right = 'auto';
     dropdown.style.transform = 'translateX(-50%)';
     console.log('Centering dropdown on button');
@@ -432,8 +426,6 @@ const positionDropdown = () => {
   dropdown.style.opacity = '1';
   dropdown.style.pointerEvents = 'auto';
   
-  // Start observing the dropdown for content changes
-  startObservingDropdown();
   
   // Final safety check
   nextTick(() => {
@@ -686,6 +678,11 @@ const positionDropdown = () => {
   border-color: var(--vscode-focusBorder, #007ACC);
 }
 
+.agent-btn:focus {
+  outline: 2px solid var(--vscode-focusBorder, #007ACC);
+  outline-offset: 2px;
+}
+
 .agent-btn.agent-changed {
   background: var(--vscode-button-background, #0E639C);
   color: var(--vscode-button-foreground, #FFFFFF);
@@ -761,6 +758,8 @@ const positionDropdown = () => {
   /* Start hidden but ready for positioning */
   opacity: 0;
   pointer-events: none;
+  /* Ensure consistent spacing */
+  padding: 4px 0;
 }
 
 /* Ensure dropdown stays on screen */
@@ -775,38 +774,57 @@ const positionDropdown = () => {
   padding: 8px 12px;
   cursor: pointer;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  transition: background-color 0.1s ease;
+  gap: 12px;
+  transition: all 0.1s ease;
+  border-radius: 4px;
+  margin: 2px 4px;
+  outline: none;
+  min-height: 36px; /* Ensure consistent height */
+  box-sizing: border-box;
 }
 
 .agent-option:hover {
   background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.1));
 }
 
-.agent-option.selected {
-  background: var(--vscode-list-activeSelectionBackground, #4A4A4A);
-  color: var(--vscode-list-activeSelectionForeground, #FFFFFF);
+.agent-option:focus {
+  background: var(--vscode-list-focusBackground, rgba(255, 255, 255, 0.15));
+  outline: 2px solid var(--vscode-focusBorder, #007ACC);
+  outline-offset: -2px;
 }
 
-.agent-option.selected:hover {
-  background: var(--vscode-list-activeSelectionBackground, #5A5A5A);
+.agent-option:active {
+  background: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.2));
 }
 
-.agent-option .codicon-check {
-  color: var(--vscode-list-activeSelectionForeground, #FFFFFF);
-  font-size: 12px;
-  margin-left: auto;
+.selection-indicator {
+  width: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  /* Ensure consistent spacing even when empty */
+  min-height: 16px;
 }
 
-.agent-name {
+.selection-check {
+  color: var(--vscode-foreground, #CCCCCC);
+  font-size: 14px;
+}
+
+.model-name {
   font-size: 13px;
   color: var(--vscode-foreground, #CCCCCC);
+  flex: 1;
+  min-width: 0; /* Allow text to shrink */
 }
 
-.agent-version {
+.provider-name {
   font-size: 11px;
   color: var(--vscode-descriptionForeground, #8C8C8C);
+  margin-left: auto;
+  flex-shrink: 0; /* Prevent provider name from shrinking */
 }
 
 .codicon {

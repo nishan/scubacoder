@@ -24,6 +24,7 @@ export interface ChatRequest {
 
 export interface ChatResult {
   text: string;
+  tokens?: { prompt?: number; completion?: number };
 }
 
 export interface ContextItem {
